@@ -1,0 +1,29 @@
+// Starter schema for event management app
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime
+  location    String
+  capacity    Int
+  createdAt   DateTime @default(now())
+  attendees   RSVP[]
+}
+
+model RSVP {
+  id        String   @id @default(cuid())
+  eventId   String
+  guestName String
+  status    String   @default("attending")
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id])
+}
