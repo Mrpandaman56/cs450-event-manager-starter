@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { getHealthCheck } from './utils/healthCheck.js';
+
 
 dotenv.config();
 
@@ -22,7 +24,7 @@ const sampleRSVPs = [
 ];
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'event-manager-starter' });
+  res.json(getHealthCheck());
 });
 
 app.get('/api/events', (_req, res) => {
