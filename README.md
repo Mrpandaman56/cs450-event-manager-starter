@@ -1,3 +1,4 @@
+Progam Assignment 1 setup
 # Event Manager Starter
 
 A full-stack event planning and RSVP application for organizing events, tracking attendance, and managing registrations.
@@ -99,3 +100,4 @@ docker compose down
 - a structured backlog for feature enhancements
 - a deployable app setup
 - a polished final demo and product walkthrough
+
