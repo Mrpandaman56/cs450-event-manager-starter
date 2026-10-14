@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { eventSchema } from './schemas/eventSchema.js';
+import { validateBody } from './middleware/validateBody.js';
 
 dotenv.config();
 
@@ -27,6 +29,16 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/events', (_req, res) => {
   res.json(sampleEvents);
+});
+
+app.post('/api/events', validateBody(eventSchema), (req, res) => {
+  const newEvent = {
+    id: `evt-${Date.now()}`,
+    ...req.body
+  };
+
+  sampleEvents.push(newEvent);
+  res.status(201).json(newEvent);
 });
 
 app.get('/api/rsvps', (_req, res) => {
