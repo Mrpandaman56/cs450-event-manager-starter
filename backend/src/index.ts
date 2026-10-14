@@ -1,21 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { eventSchema } from './schemas/eventSchema.js';
-import { validateBody } from './middleware/validateBody.js';
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 4001);
+const eventServiceUrl = process.env.EVENT_SERVICE_URL || 'http://localhost:4002';
 
 app.use(cors());
 app.use(express.json());
-
-const sampleEvents = [
-  { id: 'evt-1', title: 'Design Meetup', date: '2026-09-10', location: 'Studio 2', capacity: 40 },
-  { id: 'evt-2', title: 'Startup Pitch Night', date: '2026-09-14', location: 'Hudson Hall', capacity: 60 }
-];
 
 const sampleRSVPs = [
   { id: 'rsvp-1', eventId: 'evt-1', guestName: 'Ada', status: 'attending' },
@@ -23,22 +17,35 @@ const sampleRSVPs = [
   { id: 'rsvp-3', eventId: 'evt-2', guestName: 'Linus', status: 'attending' }
 ];
 
+async function forwardToEventService(
+  method: 'GET' | 'POST',
+  res: express.Response,
+  body?: unknown
+) {
+  try {
+    const response = await fetch(`${eventServiceUrl}/events`, {
+      method,
+      headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+      body: method === 'POST' ? JSON.stringify(body) : undefined
+    });
+
+    res.status(response.status).json(await response.json());
+  } catch (error) {
+    console.error('Event service request failed:', error);
+    res.status(503).json({ error: 'Event service is unavailable' });
+  }
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'event-manager-starter' });
+  res.json({ status: 'ok', app: 'event-manager-api-gateway' });
 });
 
 app.get('/api/events', (_req, res) => {
-  res.json(sampleEvents);
+  void forwardToEventService('GET', res);
 });
 
-app.post('/api/events', validateBody(eventSchema), (req, res) => {
-  const newEvent = {
-    id: `evt-${Date.now()}`,
-    ...req.body
-  };
-
-  sampleEvents.push(newEvent);
-  res.status(201).json(newEvent);
+app.post('/api/events', (req, res) => {
+  void forwardToEventService('POST', res, req.body);
 });
 
 app.get('/api/rsvps', (_req, res) => {
@@ -59,5 +66,5 @@ app.post('/api/rsvps', (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Event Manager backend running on http://localhost:${port}`);
+  console.log(`Event Manager API gateway running on http://localhost:${port}`);
 });
