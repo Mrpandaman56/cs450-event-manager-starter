@@ -1,8 +1,107 @@
 :root {
-  color: #0f172a;
-  background: #f8fafc;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: #18251f;
+  background: #f7f7f2;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-weight: 400;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; }
+body { margin: 0; min-width: 320px; }
+button, input, textarea { font: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 3px solid #d09d64;
+  outline-offset: 3px;
+}
+
+.page-shell { width: min(1120px, calc(100% - 56px)); margin: 0 auto; }
+.site-header { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e7df; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: #183b2b; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 23px; font-weight: 800; letter-spacing: -1.4px; text-decoration: none; }
+.brand-mark { display: grid; width: 33px; height: 33px; place-items: center; border-radius: 11px 11px 11px 4px; background: #245b41; color: white; font-size: 18px; }
+.brand-period { color: #d59353; }
+.header-label, .eyebrow, .event-count, .optional-label { font-size: 10px; font-weight: 700; letter-spacing: 1.45px; }
+.header-label { color: #6e786f; }
+
+.hero { display: flex; min-height: 300px; align-items: center; justify-content: space-between; overflow: hidden; }
+.hero-copy { padding: 42px 0 46px; }
+.eyebrow { margin: 0 0 13px; color: #ae7040; }
+.hero h1 { margin: 0; color: #1d3b2b; font-family: 'Segoe UI', system-ui, sans-serif; font-size: clamp(47px, 6.2vw, 76px); font-weight: 600; letter-spacing: -5px; line-height: .99; }
+.hero-description { max-width: 390px; margin: 17px 0 0; color: #69746c; font-size: 15px; line-height: 1.7; }
+.hero-art { position: relative; width: 330px; height: 250px; margin-right: 56px; }
+.art-sun { position: absolute; top: 39px; right: 67px; width: 146px; height: 146px; border-radius: 50%; background: #e6b779; }
+.art-orbit { position: absolute; z-index: 1; border: 1px solid rgba(35, 83, 58, .35); border-radius: 50%; transform: rotate(-33deg); }
+.art-orbit-one { top: 52px; right: 4px; width: 285px; height: 133px; }
+.art-orbit-two { top: 15px; right: 34px; width: 224px; height: 207px; transform: rotate(31deg); }
+.art-caption { position: absolute; z-index: 2; right: 0; bottom: 15px; color: #245b41; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; line-height: 1.6; text-align: right; }
+
+.content-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(315px, .8fr); align-items: start; gap: 60px; padding: 19px 0 74px; }
+.section-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 19px; }
+.section-heading .eyebrow { margin-bottom: 8px; }
+.section-heading h2, .form-heading h2 { margin: 0; color: #1c3528; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -1px; }
+.event-count { padding: 7px 10px; border: 1px solid #e1e5dc; border-radius: 99px; color: #737b72; font-size: 9px; }
+.event-list { border-top: 1px solid #e3e6de; }
+.event-card { display: grid; grid-template-columns: 57px minmax(0, 1fr) auto; gap: 16px; align-items: center; min-height: 131px; padding: 20px 2px; border-bottom: 1px solid #e3e6de; }
+.event-date { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 54px; height: 61px; border-radius: 9px; background: #e9eee7; color: #42644f; }
+.event-date span { font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.event-date strong { margin-top: 1px; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 24px; line-height: 1; }
+.event-full-date { margin: 0 0 4px; color: #a26e43; font-size: 10px; font-weight: 600; }
+.event-details h3 { margin: 0; color: #1b3125; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; }
+.event-location { margin: 7px 0 0; color: #747b73; font-size: 12px; }
+.event-location span { margin-right: 3px; color: #ad7548; }
+.event-description { margin: 8px 0 0; color: #737b72; font-size: 12px; line-height: 1.5; }
+.event-capacity { display: flex; flex-direction: column; align-items: flex-end; color: #245b41; }
+.event-capacity strong { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 18px; }
+.event-capacity span { color: #828980; font-size: 8px; font-weight: 700; letter-spacing: 1px; }
+.empty-state { display: flex; min-height: 230px; flex-direction: column; align-items: center; justify-content: center; padding: 26px; border: 1px dashed #d8ddd3; border-radius: 12px; color: #717a70; text-align: center; }
+.empty-icon { color: #bd8251; font-size: 28px; }
+.empty-state h3 { margin: 10px 0 4px; color: #2a4434; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; }
+.empty-state p { max-width: 250px; margin: 0; font-size: 12px; line-height: 1.6; }
+
+.form-panel { padding: 25px; border: 1px solid #e8e7de; border-radius: 13px; background: #fffefa; box-shadow: 0 13px 34px rgba(33, 50, 39, .045); }
+.form-heading { display: flex; align-items: center; gap: 13px; }
+.form-heading .eyebrow { margin-bottom: 5px; }
+.form-heading h2 { font-size: 21px; }
+.form-icon { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 10px; background: #e8eee6; color: #316247; font-size: 24px; }
+.form-intro { margin: 14px 0 20px; color: #737b72; font-size: 12px; line-height: 1.6; }
+.event-form { display: grid; gap: 14px; }
+.event-form label { display: grid; gap: 7px; color: #34443a; font-size: 11px; font-weight: 700; }
+.event-form input, .event-form textarea { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #dfe3db; border-radius: 7px; background: #fff; color: #1e3025; font-size: 12px; font-weight: 400; }
+.event-form textarea { min-height: 74px; resize: vertical; }
+.event-form input::placeholder, .event-form textarea::placeholder { color: #a5aaa2; }
+.form-row { display: grid; grid-template-columns: 1fr .72fr; gap: 11px; }
+.optional-label { margin-left: 4px; color: #999f96; font-size: 8px; letter-spacing: 1px; }
+.submit-button { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; padding: 12px 14px; border: 0; border-radius: 7px; background: #245b41; color: #fff; cursor: pointer; font-size: 12px; font-weight: 700; transition: background .15s ease; }
+.submit-button:hover:not(:disabled) { background: #194a32; }
+.submit-button:disabled { cursor: wait; opacity: .7; }
+.submit-button span { font-size: 16px; }
+.form-footnote { margin: 12px 0 0; color: #8a9189; font-size: 10px; line-height: 1.5; text-align: center; }
+.message { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 15px; padding: 11px 12px; border-radius: 7px; font-size: 12px; line-height: 1.5; }
+.message-error { border: 1px solid #eed2c9; background: #fff5f1; color: #994b38; }
+.message-success { border: 1px solid #d4e5d5; background: #f1f8f1; color: #326441; }
+.text-button { flex-shrink: 0; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; font-size: 11px; font-weight: 700; text-decoration: underline; }
+.site-footer { display: flex; justify-content: space-between; padding: 20px 0 25px; border-top: 1px solid #e5e7df; color: #81877e; font-size: 10px; }
+.site-footer span:first-child { color: #315b42; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 800; }
+
+@media (max-width: 760px) {
+  .page-shell { width: min(100% - 36px, 560px); }
+  .hero { min-height: 250px; }
+  .hero-art { width: 190px; height: 180px; margin-right: 4px; transform: scale(.72); transform-origin: center right; }
+  .hero h1 { font-size: clamp(43px, 10vw, 60px); letter-spacing: -3px; }
+  .hero-description { max-width: 290px; font-size: 13px; }
+  .content-grid { grid-template-columns: 1fr; gap: 34px; padding-top: 6px; }
+}
+
+@media (max-width: 480px) {
+  .site-header { height: 68px; }
+  .header-label { font-size: 8px; }
+  .hero { min-height: 230px; }
+  .hero-copy { position: relative; z-index: 2; padding: 35px 0; }
+  .hero-art { position: absolute; right: 3px; width: 160px; opacity: .5; transform: scale(.65); }
+  .event-card { grid-template-columns: 49px minmax(0, 1fr) auto; gap: 11px; }
+  .event-date { width: 48px; height: 56px; }
+  .form-panel { padding: 20px; }
+}
