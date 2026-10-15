@@ -7,63 +7,62 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT || 4001);
 const eventServiceUrl = process.env.EVENT_SERVICE_URL || 'http://localhost:4002';
+const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:4003';
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5174',
+  credentials: true
+}));
 app.use(express.json());
 
-const sampleRSVPs = [
-  { id: 'rsvp-1', eventId: 'evt-1', guestName: 'Ada', status: 'attending' },
-  { id: 'rsvp-2', eventId: 'evt-1', guestName: 'Grace', status: 'waitlist' },
-  { id: 'rsvp-3', eventId: 'evt-2', guestName: 'Linus', status: 'attending' }
-];
+function proxyTo(serviceUrl: string): express.RequestHandler {
+  return async (request, response) => {
+    try {
+      const url = new URL(request.originalUrl.replace(/^\/api/, ''), serviceUrl);
+      const headers: Record<string, string> = {};
+      if (request.headers.cookie) {
+        headers.Cookie = request.headers.cookie;
+      }
+      if (request.is('application/json')) {
+        headers['Content-Type'] = 'application/json';
+      }
 
-async function forwardToEventService(
-  method: 'GET' | 'POST',
-  res: express.Response,
-  body?: unknown
-) {
-  try {
-    const response = await fetch(`${eventServiceUrl}/events`, {
-      method,
-      headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
-      body: method === 'POST' ? JSON.stringify(body) : undefined
-    });
+      const hasBody = !['GET', 'HEAD'].includes(request.method);
+      const upstream = await fetch(url, {
+        method: request.method,
+        headers,
+        body: hasBody ? JSON.stringify(request.body ?? {}) : undefined
+      });
 
-    res.status(response.status).json(await response.json());
-  } catch (error) {
-    console.error('Event service request failed:', error);
-    res.status(503).json({ error: 'Event service is unavailable' });
-  }
+      const setCookies = upstream.headers.getSetCookie();
+      if (setCookies.length) {
+        response.setHeader('Set-Cookie', setCookies);
+      }
+
+      if (upstream.status === 204) {
+        response.status(204).end();
+        return;
+      }
+
+      const contentType = upstream.headers.get('content-type');
+      if (contentType) {
+        response.setHeader('Content-Type', contentType);
+      }
+      response.status(upstream.status).send(await upstream.text());
+    } catch (error) {
+      console.error(`Could not reach microservice for ${request.originalUrl}:`, error);
+      response.status(503).json({ error: 'A required service is unavailable' });
+    }
+  };
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'event-manager-api-gateway' });
+app.get('/api/health', (_request, response) => {
+  response.json({ status: 'ok', app: 'event-manager-api-gateway' });
 });
 
-app.get('/api/events', (_req, res) => {
-  void forwardToEventService('GET', res);
-});
-
-app.post('/api/events', (req, res) => {
-  void forwardToEventService('POST', res, req.body);
-});
-
-app.get('/api/rsvps', (_req, res) => {
-  res.json(sampleRSVPs);
-});
-
-app.post('/api/rsvps', (req, res) => {
-  const { eventId, guestName, status = 'attending' } = req.body ?? {};
-  const newRSVP = {
-    id: `rsvp-${Date.now()}`,
-    eventId,
-    guestName: guestName || 'Guest',
-    status
-  };
-
-  sampleRSVPs.push(newRSVP);
-  res.status(201).json(newRSVP);
-});
+app.use('/api/auth', proxyTo(userServiceUrl));
+app.use('/api/events', proxyTo(eventServiceUrl));
+app.use('/api/invitations', proxyTo(eventServiceUrl));
 
 app.listen(port, () => {
   console.log(`Event Manager API gateway running on http://localhost:${port}`);
