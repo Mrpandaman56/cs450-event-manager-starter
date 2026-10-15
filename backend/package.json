@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "dev:event": "tsx watch src/eventService/index.ts",
+    "build": "prisma generate && tsc",
+    "start": "node dist/index.js",
+    "start:event": "node dist/eventService/index.js",
+    "prisma:generate": "prisma generate",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
