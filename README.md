@@ -63,30 +63,65 @@ Run these commands from the project root:
 cp backend/.env.example backend/.env
 npm --prefix backend install
 npm --prefix frontend install
-docker compose up -d
-npx --prefix backend prisma generate
-npx --prefix backend prisma migrate dev --name init
+docker compose up -d --wait
+npm --prefix backend run prisma:generate
+npm --prefix backend run db:push
 ```
 
-The database runs in Docker on port `5433`. The migration command creates the
-database tables from the Prisma schema.
+The database runs in Docker on port `5433`. The `db:push` command creates or
+updates the database tables from the Prisma schema.
 
-Open two terminal windows from the project root and start the application:
+The demo uses an event and user-service slice of the microservice
+architecture. The React client calls the API gateway, which routes account
+requests to the user service and event, registration, and invitation requests
+to the event service. Both services use PostgreSQL.
 
-Terminal 1, the backend:
+Open four terminal windows from the project root and start each service:
+
+Terminal 1, the event service:
+
+```bash
+npm --prefix backend run dev:event
+```
+
+Terminal 2, the user service:
+
+```bash
+npm --prefix backend run dev:user
+```
+
+Terminal 3, the API gateway:
 
 ```bash
 npm --prefix backend run dev
 ```
 
-Terminal 2, the frontend:
+Terminal 4, the frontend:
 
 ```bash
 npm --prefix frontend run dev
 ```
 
-Open http://localhost:5174 in a browser. The backend API is available at
-http://localhost:4001.
+Open http://localhost:5174 in a browser. The API gateway is available at
+http://localhost:4001 and the event service at http://localhost:4002. The
+user service is available at http://localhost:4003. The
+frontend proxies `/api` requests to the gateway, so it does not need a separate
+API URL or CORS configuration.
+
+## Demo walkthrough
+
+1. Create a user account with an email and a password of at least 10 characters.
+2. Create an event with a name, date, location, capacity, and optional price,
+   directions link, description, and invitations to existing accounts.
+3. Sign out and sign in as an invited account. Accept or decline the invitation,
+   or find and reserve an open event in **Discover**.
+4. Check **My events** to see events you host (including past events) or events
+   you are attending. Remaining spots update when users reserve or cancel.
+5. Use **Invite people** on an event you host to invite registered users later.
+
+Event prices are informational only; this demo does not collect payments.
+Passwords are stored as salted hashes and login sessions use HTTP-only cookies.
+Account creation is local and does not send email verification messages.
 
 To stop the database, run this from the project root:
 
