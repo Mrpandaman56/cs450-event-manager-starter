@@ -134,3 +134,13 @@ docker compose down
 - a structured backlog for feature enhancements
 - a deployable app setup
 - a polished final demo and product walkthrough
+
+## Architecture and schema decisions
+
+The website is split into a React/TypeScript client, an Express API gateway, and two backend services. Vite serves the frontend and proxies its `/api` calls to the gateway. The gateway forwards `/api/auth` requests to the user service and `/api/events` and `/api/invitations` requests to the event service, forwarding session cookies and returning service responses. Both services use PostgreSQL through Prisma.
+
+The user service handles accounts and sessions. It stores a unique email and a salted password hash. Login sessions use an HTTP-only cookie; the database stores a hash of the session token and its expiration time. The event service requires an authenticated user for event, registration, and invitation routes.
+
+The Prisma schema separates `User`, `Event`, `Registration`, and `Invitation` because hosting, attending, and being invited are distinct relationships. A unique `[eventId, userId]` constraint prevents duplicate registrations, and a unique `[eventId, recipientId]` constraint prevents duplicate invitations to the same event. The schema also contains a separate guest-name `RSVP` model; the current account-based reservation routes use `Registration`.
+
+Each event stores its total `capacity` and its `remainingSpots`. Transactions update availability when users register or cancel, while a unique user/event registration prevents duplicate reservations. Request validation uses Zod: event dates must be valid `YYYY-MM-DD` dates, capacity must be a positive integer, and prices entered in dollars are converted to a integer. PostgreSQL runs through Docker Compose, and Prisma applies the schema with `db:push`.
