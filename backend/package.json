@@ -13,7 +13,8 @@
     "start:user": "node dist/userService/index.js",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
-    "test": "tsx --test src/schemas/eventSchema.test.ts"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -26,9 +27,12 @@
     "@types/cors": "^2.8.5",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
+    "@types/supertest": "^7.2.1",
     "prisma": "^5.22.0",
+    "supertest": "^7.3.1",
     "tsx": "^4.19.1",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.5"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,
