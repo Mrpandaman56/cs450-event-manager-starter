@@ -16,6 +16,7 @@ const eventFields = {
   ]).optional(),
   capacity: z.number().int().positive('Capacity must be a positive integer').max(100000),
   price: z.number().finite().min(0).max(10000).transform((value) => Math.round(value * 100)),
+  inviteOnly: z.boolean().default(false),
   description: z.string().trim().max(1000).optional()
 };
 
@@ -31,8 +32,13 @@ export const eventUpdateSchema = z.object({
   guidanceUrl: eventFields.guidanceUrl.optional(),
   capacity: eventFields.capacity.optional(),
   price: eventFields.price.optional(),
+  inviteOnly: eventFields.inviteOnly.optional(),
   description: eventFields.description.optional()
 }).strict().refine((value) => Object.keys(value).length > 0, 'Provide at least one field to update');
+
+export const rsvpSchema = z.object({
+  status: z.enum(['attending', 'not attending'])
+}).strict();
 
 export const invitationSchema = z.object({
   emails: z.array(z.string().trim().email().transform((email) => email.toLowerCase())).min(1).max(100)
