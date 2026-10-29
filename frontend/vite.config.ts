@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         // TODO 2: Default to localhost outside Docker, but read environment variable for Compose service DNS
-        target: process.env.API_PROXY_TARGET ?? 'http://localhost:4002',
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:4001',
         changeOrigin: true
       }
     }
