@@ -1,20 +1,87 @@
 services:
-  postgres:
+  db:
     image: postgres:16
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: appsecret
-      POSTGRES_DB: event_manager_app
+      POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     ports:
-      - '5433:5432'
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U appuser -d event_manager_app']
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 10
+
+  schema:
+    build: ./backend
+    command: ["npm", "run", "db:push"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+  event:
+    build: ./backend
+    command: ["npm", "run", "start:event"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      EVENT_SERVICE_PORT: "4002"
+    ports:
+      - "4002:4002"
+    depends_on:
+      db:
+        condition: service_healthy
+      schema:
+        condition: service_completed_successfully
+
+  user:
+    build: ./backend
+    command: ["npm", "run", "start:user"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      USER_SERVICE_PORT: "4003"
+    ports:
+      - "4003:4003"
+    depends_on:
+      db:
+        condition: service_healthy
+      schema:
+        condition: service_completed_successfully
+
+  gateway:
+    build: ./backend
+    command: ["npm", "run", "start"]
+    environment:
+      PORT: "4001"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      EVENT_SERVICE_URL: http://event:4002
+      USER_SERVICE_URL: http://user:4003
+      FRONTEND_ORIGIN: http://localhost:5174
+    ports:
+      - "4001:4001"
+    depends_on:
+      db:
+        condition: service_healthy
+      schema:
+        condition: service_completed_successfully
+      event:
+        condition: service_started
+      user:
+        condition: service_started
+
+  web:
+    build: ./frontend
+    environment:
+      API_PROXY_TARGET: http://gateway:4001
+    ports:
+      - "5174:5174"
+    depends_on:
+      gateway:
+        condition: service_started
 
 volumes:
   postgres_data:

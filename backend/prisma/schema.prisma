@@ -42,6 +42,7 @@ model Event {
   capacity       Int
   remainingSpots Int            @default(0)
   priceCents     Int            @default(0)
+  inviteOnly     Boolean        @default(false)
   createdAt      DateTime       @default(now())
   createdById    String?
   creator        User?          @relation("EventCreator", fields: [createdById], references: [id])
@@ -66,6 +67,7 @@ model Registration {
   id        String   @id @default(cuid())
   eventId   String
   userId    String
+  status    String   @default("attending")
   createdAt DateTime @default(now())
   event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

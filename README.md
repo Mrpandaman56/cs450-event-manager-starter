@@ -108,6 +108,42 @@ user service is available at http://localhost:4003. The
 frontend proxies `/api` requests to the gateway, so it does not need a separate
 API URL or CORS configuration.
 
+## Run with Docker
+
+1. `cp .env.example .env`
+2. `docker compose up --build`
+3. Access the UI: http://localhost:5174
+4. Verify the API gateway directly: `curl http://localhost:4001/api/health`
+5. Verify the frontend proxy: `curl http://localhost:5174/api/health`
+6. Shut down: `docker compose down`
+
+The gateway is published on port `4001`; the event and user services use
+ports `4002` and `4003` inside the Compose network. PostgreSQL listens on
+container port `5432` and is published on host port `5433`. Use the Compose
+service name and container port for service-to-service connections, not
+`localhost` or the host-published port.
+
+### Diagnostics & Verification
+
+| Check | Expected result | Underlying concept |
+|---|---|---|
+| Startup order | The API services wait for the database health check, and the gateway waits for schema setup to finish. | A running process is not necessarily ready to serve requests. |
+| Database connection | Backend services connect to `db:5432`. | Compose service DNS and container ports are used between containers. |
+| Gateway health | `curl http://localhost:4001/api/health` returns a successful health response. | Published host ports forward traffic to the container. |
+| Frontend proxy | `curl http://localhost:5174/api/health` returns the gateway health response. | Vite forwards `/api` requests to the gateway service. |
+| Persistence | The `postgres_data` volume remains after `docker compose down`. | Named volumes preserve database data beyond a container's lifetime. |
+
+If a check fails, inspect the relevant service with `docker compose ps` and
+`docker compose logs <service>`. For example, use `docker compose logs gateway`
+for gateway startup errors. `docker compose down -v` also removes the database
+volume and its data; only use it when you intend to reset the local database.
+
+### Pull Request checklist
+
+- [ ] README setup commands, URLs, and ports match the Team V Compose configuration.
+- [ ] Each student adds a code review comment answering their role's concept question.
+- [ ] Runbook verification results and any troubleshooting findings are recorded after testing.
+
 ## Demo walkthrough
 
 1. Create a user account with an email and a password of at least 10 characters.
