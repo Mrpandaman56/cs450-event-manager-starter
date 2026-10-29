@@ -117,6 +117,12 @@ API URL or CORS configuration.
 5. Verify the frontend proxy: `curl http://localhost:5174/api/health`
 6. Shut down: `docker compose down`
 
+Compose uses the Event Manager-specific `EVENT_MANAGER_DB_NAME` setting and
+defaults to `event_manager_app`, so unrelated `POSTGRES_DB` settings in a
+local `.env` do not change the app's database name. If changing an existing
+installation's database name, note that PostgreSQL does not rename databases
+inside an already-initialized data volume.
+
 The gateway is published on port `4001`; the event and user services use
 ports `4002` and `4003` inside the Compose network. PostgreSQL listens on
 container port `5432` and is published on host port `5433`. Use the Compose
