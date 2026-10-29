@@ -112,11 +112,14 @@ API URL or CORS configuration.
 
 1. Create a user account with an email and a password of at least 10 characters.
 2. Create an event with a name, date, location, capacity, and optional price,
-   directions link, description, and invitations to existing accounts.
+   directions link, description, and invitations to existing accounts. Select
+   **Invite only** to hide it from accounts that have not been invited.
 3. Sign out and sign in as an invited account. Accept or decline the invitation,
-   or find and reserve an open event in **Discover**.
+   or choose **Attending** / **Not attending** on an event in **Discover**.
 4. Check **My events** to see events you host (including past events) or events
-   you are attending. Remaining spots update when users reserve or cancel.
+   you are attending. Hosts can expand an event's attendance panel to see
+   invitees, confirmed attendees, and declined RSVPs. Switching to **Not
+   attending** releases the spot for another attendee.
 5. Use **Invite people** on an event you host to invite registered users later.
 
 Event prices are informational only; this demo does not collect payments.

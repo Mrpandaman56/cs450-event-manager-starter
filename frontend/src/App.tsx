@@ -10,10 +10,15 @@ type EventItem = {
   capacity: number;
   remainingSpots: number;
   registeredCount: number;
+  inviteOnly: boolean;
   priceCents: number;
   description: string | null;
-  viewerRegistered: boolean;
+  viewerRsvpStatus: 'attending' | 'not attending' | null;
   creator: { id: string; name: string };
+  attendance?: {
+    rsvps: { userId: string; name: string; email: string; status: 'attending' | 'not attending' }[];
+    invitees: { id: string; userId: string; name: string; email: string; status: string }[];
+  };
 };
 type Invitation = {
   id: string;
@@ -73,6 +78,7 @@ function eventPayload(form: HTMLFormElement) {
     guidanceUrl: String(values.get('guidanceUrl') || '').trim(),
     capacity: Number(values.get('capacity')),
     price: Number(values.get('price') || 0),
+    inviteOnly: values.get('inviteOnly') === 'on',
     description: String(values.get('description') || '').trim(),
     inviteEmails: String(values.get('inviteEmails') || '')
       .split(/[\n,;]/)
@@ -85,7 +91,7 @@ function EventCard({
   event,
   currentUser,
   page,
-  onRegister,
+  onRsvp,
   onEdit,
   onInvite,
   busy
@@ -93,7 +99,7 @@ function EventCard({
   event: EventItem;
   currentUser: User;
   page: Page;
-  onRegister: (event: EventItem) => void;
+  onRsvp: (event: EventItem, status: 'attending' | 'not attending') => void;
   onEdit: (event: EventItem) => void;
   onInvite: (event: EventItem) => void;
   busy: boolean;
@@ -111,10 +117,11 @@ function EventCard({
         <div className="event-kicker">
           <span>{formatDate(event.date, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
           <span className={`availability ${full ? 'availability-full' : ''}`}>
-            {full ? 'SOLD OUT' : `${event.remainingSpots} SPOTS LEFT`}
+            {full ? 'FULL' : `${event.remainingSpots} SPOTS LEFT`}
           </span>
         </div>
         <h3>{event.title}</h3>
+        {event.inviteOnly && <span className="event-privacy">INVITE ONLY</span>}
         <p className="event-place">{event.location} <span>·</span> hosted by {event.creator.name}</p>
         {event.description && <p className="event-description">{event.description}</p>}
         {event.guidanceUrl && (
@@ -129,14 +136,27 @@ function EventCard({
       </div>
       <div className="event-actions">
         {page === 'discover' && (
-          <button
-            className={event.viewerRegistered ? 'button button-quiet' : 'button button-light'}
-            type="button"
-            disabled={busy || (full && !event.viewerRegistered)}
-            onClick={() => onRegister(event)}
-          >
-            {busy ? 'PLEASE WAIT' : event.viewerRegistered ? 'CANCEL' : full ? 'FULL' : 'RESERVE SPOT'}
-          </button>
+          <div className="rsvp-actions" aria-label={`RSVP to ${event.title}`}>
+            <button
+              className={`button ${event.viewerRsvpStatus === 'attending' ? 'button-primary' : 'button-light'}`}
+              type="button"
+              aria-pressed={event.viewerRsvpStatus === 'attending'}
+              disabled={busy || (full && event.viewerRsvpStatus !== 'attending')}
+              onClick={() => onRsvp(event, 'attending')}
+            >
+              {busy ? 'PLEASE WAIT' : 'ATTENDING'}
+            </button>
+            <button
+              className={`button ${event.viewerRsvpStatus === 'not attending' ? 'button-primary' : 'button-quiet'}`}
+              type="button"
+              aria-pressed={event.viewerRsvpStatus === 'not attending'}
+              disabled={busy || event.viewerRsvpStatus === 'not attending'}
+              onClick={() => onRsvp(event, 'not attending')}
+            >
+              NOT ATTENDING
+            </button>
+            {full && event.viewerRsvpStatus !== 'attending' && <span className="capacity-message">No spots remain</span>}
+          </div>
         )}
         {page === 'my-events' && isOwner && (
           <>
@@ -145,6 +165,36 @@ function EventCard({
           </>
         )}
       </div>
+      {page === 'my-events' && isOwner && event.attendance && (
+        <details className="attendance-panel">
+          <summary>
+            ATTENDANCE · {event.registeredCount} ATTENDING · {event.attendance.invitees.length} INVITED
+          </summary>
+          <div className="attendance-columns">
+            <section>
+              <h4>ATTENDING ({event.attendance.rsvps.filter((rsvp) => rsvp.status === 'attending').length})</h4>
+              {event.attendance.rsvps.filter((rsvp) => rsvp.status === 'attending').map((rsvp) => (
+                <p key={rsvp.userId}>{rsvp.name}<small>{rsvp.email}</small></p>
+              ))}
+              {!event.attendance.rsvps.some((rsvp) => rsvp.status === 'attending') && <p className="attendance-empty">No confirmed attendees yet.</p>}
+            </section>
+            <section>
+              <h4>NOT ATTENDING ({event.attendance.rsvps.filter((rsvp) => rsvp.status === 'not attending').length})</h4>
+              {event.attendance.rsvps.filter((rsvp) => rsvp.status === 'not attending').map((rsvp) => (
+                <p key={rsvp.userId}>{rsvp.name}<small>{rsvp.email}</small></p>
+              ))}
+              {!event.attendance.rsvps.some((rsvp) => rsvp.status === 'not attending') && <p className="attendance-empty">No declines.</p>}
+            </section>
+            <section>
+              <h4>INVITATIONS</h4>
+              {event.attendance.invitees.map((invitee) => (
+                <p key={invitee.id}>{invitee.name}<small>{invitee.email} · {invitee.status.toUpperCase()}</small></p>
+              ))}
+              {!event.attendance.invitees.length && <p className="attendance-empty">No invitations sent.</p>}
+            </section>
+          </div>
+        </details>
+      )}
     </article>
   );
 }
@@ -272,21 +322,21 @@ export default function App() {
     }
   }
 
-  async function handleRegistration(event: EventItem) {
+  async function handleRsvp(event: EventItem, status: 'attending' | 'not attending') {
     setBusyEvent(event.id);
     setError('');
     setNotice('');
     try {
-      if (event.viewerRegistered) {
-        await api<void>(`/api/events/${event.id}/registrations`, { method: 'DELETE' });
-        setNotice(`Registration cancelled for ${event.title}.`);
-      } else {
-        await api(`/api/events/${event.id}/registrations`, { method: 'POST', body: '{}' });
-        setNotice(`Your spot for ${event.title} is reserved.`);
-      }
+      await api<{ status: string }>(`/api/events/${event.id}/rsvp`, {
+        method: 'POST',
+        body: JSON.stringify({ status })
+      });
+      setNotice(status === 'attending'
+        ? `You’re attending ${event.title}.`
+        : `You’re marked as not attending ${event.title}. A spot is now available.`);
       await loadEvents();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not update your registration.');
+      setError(requestError instanceof Error ? requestError.message : 'Could not save your RSVP.');
     } finally {
       setBusyEvent('');
     }
@@ -307,6 +357,7 @@ export default function App() {
       });
       setNotice(`${result.sent} invitation${result.sent === 1 ? '' : 's'} sent.`);
       setInviting(null);
+      await loadEvents();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not send invitations.');
     } finally {
@@ -320,7 +371,7 @@ export default function App() {
     try {
       await api<void>(`/api/invitations/${invitation.id}/${answer}`, { method: 'POST', body: '{}' });
       setInvitations((current) => current.filter((item) => item.id !== invitation.id));
-      setNotice(answer === 'accept' ? `You’re registered for ${invitation.event.title}.` : 'Invitation declined.');
+      setNotice(answer === 'accept' ? `You’re attending ${invitation.event.title}.` : 'Invitation declined. Any reserved spot has been released.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not respond to invitation.');
     } finally {
@@ -467,6 +518,10 @@ export default function App() {
                   <label>PRICE (USD) <span className="field-optional">OPTIONAL · INFO ONLY</span><input name="price" type="number" min="0" max="10000" step="0.01" defaultValue={editing ? (editing.priceCents / 100).toFixed(2) : '0'} /></label>
                   <div className="price-note">NO PAYMENTS COLLECTED<br />PRICE SHOWN TO GUESTS</div>
                 </div>
+                <label className="checkbox-label">
+                  <input name="inviteOnly" type="checkbox" defaultChecked={editing?.inviteOnly || false} />
+                  <span>INVITE ONLY <small>Only invited accounts can discover or RSVP to this event.</small></span>
+                </label>
                 <label>THE DETAILS <span className="field-optional">OPTIONAL</span><textarea name="description" rows={4} defaultValue={editing?.description || ''} maxLength={1000} placeholder="A few words about what to expect…" /></label>
                 {!editing && <label>INVITE USERS BY EMAIL <span className="field-optional">OPTIONAL · EXISTING ACCOUNTS</span><textarea name="inviteEmails" rows={3} placeholder={'alex@example.com\\nsam@example.com'} /></label>}
                 <div className="form-footer">
@@ -483,7 +538,7 @@ export default function App() {
                 <div className="empty-state"><span className="empty-symbol">◎</span><h3>{page === 'my-events' ? 'Nothing on your list yet.' : 'A quiet moment.'}</h3><p>{page === 'my-events' ? 'Create an event, or explore what others are hosting.' : 'Try another search, or check back soon for new gatherings.'}</p><button className="button button-light" type="button" onClick={() => setPage(page === 'my-events' ? 'create' : 'discover')}>{page === 'my-events' ? 'CREATE YOUR FIRST EVENT' : 'CLEAR YOUR SEARCH'}</button></div>
               ) : (
                 <div className="event-list">
-                  {events.map((event) => <EventCard key={event.id} event={event} currentUser={user} page={page} onRegister={(item) => void handleRegistration(item)} onEdit={(item) => { setEditing(item); setPage('create'); }} onInvite={setInviting} busy={busyEvent === event.id} />)}
+                  {events.map((event) => <EventCard key={event.id} event={event} currentUser={user} page={page} onRsvp={(item, status) => void handleRsvp(item, status)} onEdit={(item) => { setEditing(item); setPage('create'); }} onInvite={setInviting} busy={busyEvent === event.id} />)}
                 </div>
               )
           )}
