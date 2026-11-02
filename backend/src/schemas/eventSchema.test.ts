@@ -1,5 +1,4 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'vitest';
 import { eventSchema, eventUpdateSchema, invitationSchema } from './eventSchema.js';
 import { loginSchema, registerSchema } from './authSchemas.js';
 
@@ -15,9 +14,9 @@ test('event schema validates event data and converts dollar prices to cents', ()
     inviteEmails: ['FRIEND@example.test']
   });
 
-  assert.equal(result.title, 'Open studio');
-  assert.equal(result.price, 850);
-  assert.deepEqual(result.inviteEmails, ['friend@example.test']);
+  expect(result.title).toBe('Open studio');
+  expect(result.price).toBe(850);
+  expect(result.inviteEmails).toEqual(['friend@example.test']);
 });
 
 test('event schema rejects invalid dates, prices, and non-web directions links', () => {
@@ -26,39 +25,39 @@ test('event schema rejects invalid dates, prices, and non-web directions links',
     { price: -1 },
     { guidanceUrl: 'javascript:alert(1)' }
   ]) {
-    assert.equal(eventSchema.safeParse({
+    expect(eventSchema.safeParse({
       title: 'Community dinner',
       date: '2026-12-01',
       location: 'Main hall',
       capacity: 24,
       price: 0,
       ...invalid
-    }).success, false);
+    }).success).toBe(false);
   }
 });
 
 test('event update schema accepts partial changes but rejects empty updates', () => {
-  assert.equal(eventUpdateSchema.parse({ capacity: 30 }).capacity, 30);
-  assert.equal(eventUpdateSchema.safeParse({}).success, false);
+  expect(eventUpdateSchema.parse({ capacity: 30 }).capacity).toBe(30);
+  expect(eventUpdateSchema.safeParse({}).success).toBe(false);
 });
 
 test('invitation addresses are normalized and limited to valid emails', () => {
-  assert.deepEqual(invitationSchema.parse({ emails: ['  USER@example.test '] }), {
+  expect(invitationSchema.parse({ emails: ['  USER@example.test '] })).toEqual({
     emails: ['user@example.test']
   });
-  assert.equal(invitationSchema.safeParse({ emails: ['not-an-email'] }).success, false);
+  expect(invitationSchema.safeParse({ emails: ['not-an-email'] }).success).toBe(false);
 });
 
 test('account schemas normalize email and require a strong-enough password', () => {
-  assert.equal(registerSchema.parse({
+  expect(registerSchema.parse({
     name: 'Guest',
     email: 'GUEST@example.test',
     password: 'long-enough-password'
-  }).email, 'guest@example.test');
-  assert.equal(registerSchema.safeParse({
+  }).email).toBe('guest@example.test');
+  expect(registerSchema.safeParse({
     name: 'Guest',
     email: 'guest@example.test',
     password: 'short'
-  }).success, false);
-  assert.equal(loginSchema.safeParse({ email: 'invalid', password: 'secret' }).success, false);
+  }).success).toBe(false);
+  expect(loginSchema.safeParse({ email: 'invalid', password: 'secret' }).success).toBe(false);
 });
