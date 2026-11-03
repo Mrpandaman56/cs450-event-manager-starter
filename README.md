@@ -186,3 +186,8 @@ The user service handles accounts and sessions. It stores a unique email and a s
 The Prisma schema separates `User`, `Event`, `Registration`, and `Invitation` because hosting, attending, and being invited are distinct relationships. A unique `[eventId, userId]` constraint prevents duplicate registrations, and a unique `[eventId, recipientId]` constraint prevents duplicate invitations to the same event. The schema also contains a separate guest-name `RSVP` model; the current account-based reservation routes use `Registration`.
 
 Each event stores its total `capacity` and its `remainingSpots`. Transactions update availability when users register or cancel, while a unique user/event registration prevents duplicate reservations. Request validation uses Zod: event dates must be valid `YYYY-MM-DD` dates, capacity must be a positive integer, and prices entered in dollars are converted to a integer. PostgreSQL runs through Docker Compose, and Prisma applies the schema with `db:push`.
+
+
+- **Invite-Only Events:** Restricts spot reservations to event creators and users with accepted invitations.
+- **Capacity Rules & Warning Banners:** Supports zero-capacity events (`capacity = 0`), serializable reservation locking, and dynamic `≥ 90% CAPACITY (ALMOST FULL)` warning badges.
+- **50-Event Demo Seeding:** Populates the database with test events across realistic dates, capacities, and invitation states.
