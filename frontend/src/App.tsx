@@ -12,6 +12,7 @@ type EventItem = {
   registeredCount: number;
   priceCents: number;
   description: string | null;
+  inviteOnly: boolean;
   viewerRegistered: boolean;
   creator: { id: string; name: string };
 };
@@ -45,8 +46,7 @@ async function api<T>(path: string, init?: RequestInit) {
     ...init,
     credentials: 'same-origin',
     headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {})
     }
   }));
 }
@@ -74,6 +74,7 @@ function eventPayload(form: HTMLFormElement) {
     capacity: Number(values.get('capacity')),
     price: Number(values.get('price') || 0),
     description: String(values.get('description') || '').trim(),
+    inviteOnly: values.get('inviteOnly') === 'on',
     inviteEmails: String(values.get('inviteEmails') || '')
       .split(/[\n,;]/)
       .map((email) => email.trim())
@@ -99,7 +100,10 @@ function EventCard({
   busy: boolean;
 }) {
   const isOwner = event.creator.id === currentUser.id;
-  const full = event.remainingSpots === 0;
+  const full = event.remainingSpots === 0 || event.capacity === 0;
+  const fillPercentage = event.capacity > 0 ? (event.registeredCount / event.capacity) * 100 : 100;
+  const isAlmostFull = !full && event.capacity > 0 && fillPercentage >= 90;
+
   return (
     <article className="event-card">
       <div className="event-date">
@@ -110,6 +114,8 @@ function EventCard({
       <div className="event-main">
         <div className="event-kicker">
           <span>{formatDate(event.date, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          {event.inviteOnly && <span className="availability">INVITE ONLY</span>}
+          {isAlmostFull && <span className="availability availability-warning">≥ 90% CAPACITY (ALMOST FULL)</span>}
           <span className={`availability ${full ? 'availability-full' : ''}`}>
             {full ? 'SOLD OUT' : `${event.remainingSpots} SPOTS LEFT`}
           </span>
@@ -454,80 +460,3 @@ export default function App() {
 
           {page === 'create' && (
             <section className="editor-card">
-              <div className="editor-heading"><p className="micro-label">{editing ? 'EVENT SETTINGS' : 'MAKE THE FIRST MOVE'}</p><h2>{editing ? 'Edit event' : 'Create an event'}</h2><p>Bring the details. We’ll bring the people.</p></div>
-              <form className="event-form" onSubmit={handleEventSubmit}>
-                <label>EVENT NAME<input name="title" defaultValue={editing?.title || ''} placeholder="A night under the open sky" maxLength={120} required /></label>
-                <div className="form-row">
-                  <label>DATE<input name="date" type="date" defaultValue={editing?.date || ''} required /></label>
-                  <label>CAPACITY<input name="capacity" type="number" min={1} max={100000} step={1} defaultValue={editing?.capacity || ''} required /></label>
-                </div>
-                <label>LOCATION<input name="location" defaultValue={editing?.location || ''} placeholder="Street, venue, or landmark" maxLength={200} required /></label>
-                <label>MAP / DIRECTIONS LINK <span className="field-optional">OPTIONAL</span><input name="guidanceUrl" type="url" defaultValue={editing?.guidanceUrl || ''} placeholder="https://maps.example.com/…" /></label>
-                <div className="form-row">
-                  <label>PRICE (USD) <span className="field-optional">OPTIONAL · INFO ONLY</span><input name="price" type="number" min="0" max="10000" step="0.01" defaultValue={editing ? (editing.priceCents / 100).toFixed(2) : '0'} /></label>
-                  <div className="price-note">NO PAYMENTS COLLECTED<br />PRICE SHOWN TO GUESTS</div>
-                </div>
-                <label>THE DETAILS <span className="field-optional">OPTIONAL</span><textarea name="description" rows={4} defaultValue={editing?.description || ''} maxLength={1000} placeholder="A few words about what to expect…" /></label>
-                {!editing && <label>INVITE USERS BY EMAIL <span className="field-optional">OPTIONAL · EXISTING ACCOUNTS</span><textarea name="inviteEmails" rows={3} placeholder={'alex@example.com\\nsam@example.com'} /></label>}
-                <div className="form-footer">
-                  <button className="button button-primary" disabled={submitting} type="submit">{submitting ? 'SAVING…' : editing ? 'SAVE CHANGES' : 'PUBLISH EVENT'} <span>↗</span></button>
-                  <button className="button button-quiet" type="button" onClick={() => { setEditing(null); setPage('my-events'); }}>CANCEL</button>
-                </div>
-              </form>
-            </section>
-          )}
-
-          {(page === 'discover' || page === 'my-events') && (
-            loading ? <div className="loading-row"><span className="loader-mark">●</span> LOADING THE GUEST LIST</div>
-              : events.length === 0 ? (
-                <div className="empty-state"><span className="empty-symbol">◎</span><h3>{page === 'my-events' ? 'Nothing on your list yet.' : 'A quiet moment.'}</h3><p>{page === 'my-events' ? 'Create an event, or explore what others are hosting.' : 'Try another search, or check back soon for new gatherings.'}</p><button className="button button-light" type="button" onClick={() => setPage(page === 'my-events' ? 'create' : 'discover')}>{page === 'my-events' ? 'CREATE YOUR FIRST EVENT' : 'CLEAR YOUR SEARCH'}</button></div>
-              ) : (
-                <div className="event-list">
-                  {events.map((event) => <EventCard key={event.id} event={event} currentUser={user} page={page} onRegister={(item) => void handleRegistration(item)} onEdit={(item) => { setEditing(item); setPage('create'); }} onInvite={setInviting} busy={busyEvent === event.id} />)}
-                </div>
-              )
-          )}
-
-          {page === 'invitations' && (
-            loading ? <div className="loading-row"><span className="loader-mark">●</span> CHECKING THE POST</div>
-              : invitations.length === 0 ? <div className="empty-state"><span className="empty-symbol">◎</span><h3>No new invitations.</h3><p>When someone saves you a seat, you’ll find it here.</p></div>
-                : <div className="invitation-list">{invitations.map((invitation) => (
-                  <article className="invitation-card" key={invitation.id}>
-                    <p className="micro-label">A NOTE FROM {invitation.sender.name.toUpperCase()}</p>
-                    <h3>{invitation.event.title}</h3>
-                    <p>{formatDate(invitation.event.date, { weekday: 'long', month: 'long', day: 'numeric' })} · {invitation.event.location}</p>
-                    <p className="invitation-price">{formatPrice(invitation.event.priceCents)} <span>· {invitation.event.remainingSpots} spots left</span></p>
-                    <div className="form-footer">
-                      <button className="button button-primary" type="button" disabled={busyEvent === invitation.id} onClick={() => void answerInvitation(invitation, 'accept')}>ACCEPT INVITE ↗</button>
-                      <button className="button button-quiet" type="button" disabled={busyEvent === invitation.id} onClick={() => void answerInvitation(invitation, 'decline')}>DECLINE</button>
-                    </div>
-                  </article>
-                ))}</div>
-          )}
-        </section>
-
-        <aside className="side-column">
-          <div className="side-stamp"><span>●</span><span>NO FEED.<br />NO FOMO.<br />JUST PEOPLE.</span><i>◎</i></div>
-          <div className="side-note"><p className="micro-label">THE SMALL PRINT</p><p>Events with a price are listed for planning. Payment isn’t collected through this demo.</p></div>
-          <button className="side-create" type="button" onClick={() => { setEditing(null); setPage('create'); }}>HAVE AN IDEA?<br /><strong>PUT IT OUT THERE <span>↗</span></strong></button>
-        </aside>
-      </div>
-
-      <footer className="site-footer"><span>COMMON/GROUND © 2026</span><span>BUILT FOR GETTING TOGETHER</span><span>GOOD THINGS HAPPEN OFFLINE <i>●</i></span></footer>
-
-      {(inviting !== null) && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInviting(null); }}>
-          <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="invite-heading">
-            <button className="modal-close" aria-label="Close invitation dialog" type="button" onClick={() => setInviting(null)}>×</button>
-            <p className="micro-label">PASS IT ALONG</p><h2 id="invite-heading">Invite someone in.</h2>
-            <p>Send {inviting.title} to people with an account. Separate email addresses with commas or new lines.</p>
-            <form className="event-form" onSubmit={(event) => void handleSendInvitations(event)}>
-              <label>ACCOUNT EMAILS<textarea name="emails" rows={4} placeholder={'friend@example.com\\nanother@example.com'} required /></label>
-              <button className="button button-primary" disabled={submitting} type="submit">{submitting ? 'SENDING…' : 'SEND INVITATIONS ↗'}</button>
-            </form>
-          </section>
-        </div>
-      )}
-    </main>
-  );
-}
