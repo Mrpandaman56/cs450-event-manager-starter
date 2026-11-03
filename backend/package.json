@@ -38,5 +38,8 @@
     "@prisma/client@5.22.0": true,
     "esbuild@0.28.2": true,
     "workerd@1.20260901.1": true
-  }
+  },
+  "prisma": {
+  "seed": "tsx prisma/seed.ts"
+}
 }

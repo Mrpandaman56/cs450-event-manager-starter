@@ -14,9 +14,10 @@ const eventFields = {
       .refine((value) => /^https?:\/\//i.test(value), 'Directions links must use HTTP or HTTPS'),
     z.literal('')
   ]).optional(),
-  capacity: z.number().int().positive('Capacity must be a positive integer').max(100000),
+  capacity: z.number().int().min(0, 'Capacity cannot be negative').max(100000),
   price: z.number().finite().min(0).max(10000).transform((value) => Math.round(value * 100)),
-  description: z.string().trim().max(1000).optional()
+  description: z.string().trim().max(1000).optional(),
+  inviteOnly: z.boolean().optional().default(false)
 };
 
 export const eventSchema = z.object({
@@ -31,7 +32,8 @@ export const eventUpdateSchema = z.object({
   guidanceUrl: eventFields.guidanceUrl.optional(),
   capacity: eventFields.capacity.optional(),
   price: eventFields.price.optional(),
-  description: eventFields.description.optional()
+  description: eventFields.description.optional(),
+  inviteOnly: eventFields.inviteOnly.optional()
 }).strict().refine((value) => Object.keys(value).length > 0, 'Provide at least one field to update');
 
 export const invitationSchema = z.object({

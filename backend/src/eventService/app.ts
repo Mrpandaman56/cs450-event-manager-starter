@@ -28,7 +28,6 @@ function sendApiError(response: express.Response, error: unknown, operation: str
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
     response.status(409).json({ error: 'Event availability changed. Refresh and try again.' });
-    return;
   }
 
   console.error(`${operation}:`, error);
@@ -50,6 +49,7 @@ function eventResponse(
     registrations: { userId: string }[];
     _count: { registrations: number };
     creator: { id: string; name: string } | null;
+    inviteOnly?: boolean;
     [key: string]: unknown;
   },
   userId: string
@@ -57,6 +57,7 @@ function eventResponse(
   const { date, priceCents, registrations, _count, creator, ...fields } = event;
   return {
     ...fields,
+    inviteOnly: Boolean(fields.inviteOnly),
     date: date.toISOString().slice(0, 10),
     priceCents,
     registeredCount: _count.registrations,
@@ -80,6 +81,14 @@ async function registerForEvent(eventId: string, userId: string) {
     }
     if (event.date < today()) {
       throw new ApiError(409, 'Registration for this event is closed');
+    }
+    if (event.inviteOnly && event.createdById !== userId) {
+      const invitation = await transaction.invitation.findFirst({
+        where: { eventId, recipientId: userId }
+      });
+      if (!invitation) {
+        throw new ApiError(403, 'This event is by invitation only');
+      }
     }
     const updated = await transaction.event.updateMany({
       where: { id: eventId, remainingSpots: { gt: 0 } },
@@ -192,6 +201,7 @@ app.post('/events', validateBody(eventSchema), async (request, response) => {
           remainingSpots: input.capacity,
           priceCents: input.price,
           description: input.description || null,
+          inviteOnly: input.inviteOnly,
           createdById: request.userId!,
           invitations: {
             createMany: {
@@ -249,6 +259,7 @@ app.patch('/events/:eventId', async (request, response) => {
           ...(input.guidanceUrl !== undefined ? { guidanceUrl: input.guidanceUrl || null } : {}),
           ...(input.description !== undefined ? { description: input.description || null } : {}),
           ...(input.price !== undefined ? { priceCents: input.price } : {}),
+          ...(input.inviteOnly !== undefined ? { inviteOnly: input.inviteOnly } : {}),
           ...(input.capacity !== undefined
             ? { capacity: input.capacity, remainingSpots: input.capacity - registrationCount }
             : {})
@@ -348,6 +359,7 @@ app.get('/invitations', async (request, response) => {
             remainingSpots: true,
             priceCents: true,
             description: true,
+            inviteOnly: true,
             createdById: true
           }
         }
