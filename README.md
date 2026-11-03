@@ -191,3 +191,11 @@ Each event stores its total `capacity` and its `remainingSpots`. Transactions up
 - **Invite-Only Events:** Restricts spot reservations to event creators and users with accepted invitations.
 - **Capacity Rules & Warning Banners:** Supports zero-capacity events (`capacity = 0`), serializable reservation locking, and dynamic `≥ 90% CAPACITY (ALMOST FULL)` warning badges.
 - **50-Event Demo Seeding:** Populates the database with test events across realistic dates, capacities, and invitation states.
+
+# Generate Prisma types and apply migrations
+npm --prefix backend run prisma:generate
+npm --prefix backend run db:push
+
+# Run the 50-event seed script:
+cd backend
+npx tsx prisma/seed.ts
