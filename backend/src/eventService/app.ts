@@ -28,6 +28,7 @@ function sendApiError(response: express.Response, error: unknown, operation: str
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
     response.status(409).json({ error: 'Event availability changed. Refresh and try again.' });
+    return;
   }
 
   console.error(`${operation}:`, error);
@@ -46,7 +47,7 @@ function eventResponse(
   event: {
     date: Date;
     priceCents: number;
-    registrations: { userId: string }[];
+    registrations: { userId: string; status: string }[];
     _count: { registrations: number };
     creator: { id: string; name: string } | null;
     inviteOnly?: boolean;
@@ -62,15 +63,15 @@ function eventResponse(
     priceCents,
     registeredCount: _count.registrations,
     remainingSpots: Number(fields.remainingSpots),
-    viewerRegistered: registrations.some((registration) => registration.userId === userId),
+    viewerRegistered: registrations.some((registration) => registration.userId === userId && registration.status === 'attending'),
     creator: creator || { id: '', name: 'Community host' }
   };
 }
 
 const eventView = {
   creator: { select: { id: true, name: true } },
-  _count: { select: { registrations: true } },
-  registrations: { select: { userId: true } }
+  _count: { select: { registrations: { where: { status: 'attending' } } } },
+  registrations: { select: { userId: true, status: true } }
 } as const;
 
 async function registerForEvent(eventId: string, userId: string) {
@@ -90,6 +91,13 @@ async function registerForEvent(eventId: string, userId: string) {
         throw new ApiError(403, 'This event is by invitation only');
       }
     }
+    const registration = await transaction.registration.findUnique({
+      where: { eventId_userId: { eventId, userId } }
+    });
+    if (registration?.status === 'attending') {
+      throw new ApiError(409, 'You are already registered for this event');
+    }
+
     const updated = await transaction.event.updateMany({
       where: { id: eventId, remainingSpots: { gt: 0 } },
       data: { remainingSpots: { decrement: 1 } }
@@ -98,9 +106,17 @@ async function registerForEvent(eventId: string, userId: string) {
       throw new ApiError(409, 'This event is full');
     }
 
-    return transaction.registration.create({
-      data: { eventId, userId }
+    const savedRegistration = registration
+      ? await transaction.registration.update({
+        where: { id: registration.id },
+        data: { status: 'attending' }
+      })
+      : await transaction.registration.create({ data: { eventId, userId } });
+    await transaction.invitation.updateMany({
+      where: { eventId, recipientId: userId, status: { in: ['pending', 'declined'] } },
+      data: { status: 'accepted' }
     });
+    return savedRegistration;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
@@ -110,7 +126,7 @@ async function restoreLegacyEventAvailability() {
     select: {
       id: true,
       capacity: true,
-      _count: { select: { registrations: true } }
+      _count: { select: { registrations: { where: { status: 'attending' } } } }
     }
   });
 
@@ -146,15 +162,32 @@ app.get('/events', async (request, response) => {
     const where: Prisma.EventWhereInput = scope === 'mine'
       ? { createdById: request.userId }
       : scope === 'registered'
-        ? { registrations: { some: { userId: request.userId } } }
+        ? { registrations: { some: { userId: request.userId, status: 'attending' } } }
         : { date: { gte: today() } };
+    const conditions: Prisma.EventWhereInput[] = [];
+
+    if (scope !== 'mine') {
+      conditions.push({
+        OR: [
+          { inviteOnly: false },
+          { createdById: request.userId },
+          { invitations: { some: { recipientId: request.userId } } }
+        ]
+      });
+    }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { location: { contains: search, mode: 'insensitive' } }
-      ];
+      conditions.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } }
+        ]
+      });
+    }
+
+    if (conditions.length) {
+      where.AND = conditions;
     }
 
     const events = await prisma.event.findMany({
@@ -163,8 +196,8 @@ app.get('/events', async (request, response) => {
       include: {
         ...eventView,
         registrations: {
-          where: { userId: request.userId },
-          select: { userId: true }
+          where: { userId: request.userId, status: 'attending' },
+          select: { userId: true, status: true }
         }
       }
     });
@@ -218,7 +251,7 @@ app.post('/events', validateBody(eventSchema), async (request, response) => {
 
     const result = await prisma.event.findUniqueOrThrow({
       where: { id: event.id },
-      include: { ...eventView, registrations: { where: { userId: request.userId }, select: { userId: true } } }
+      include: { ...eventView, registrations: { where: { userId: request.userId, status: 'attending' }, select: { userId: true, status: true } } }
     });
     response.status(201).json(eventResponse(result, request.userId!));
   } catch (error) {
@@ -245,7 +278,7 @@ app.patch('/events/:eventId', async (request, response) => {
         throw new ApiError(403, 'Only the event creator can edit this event');
       }
 
-      const registrationCount = await transaction.registration.count({ where: { eventId: existing.id } });
+      const registrationCount = await transaction.registration.count({ where: { eventId: existing.id, status: 'attending' } });
       if (input.capacity !== undefined && input.capacity < registrationCount) {
         throw new ApiError(409, 'Capacity cannot be lower than the number of people already registered');
       }
@@ -269,7 +302,7 @@ app.patch('/events/:eventId', async (request, response) => {
 
     const result = await prisma.event.findUniqueOrThrow({
       where: { id: event.id },
-      include: { ...eventView, registrations: { where: { userId: request.userId }, select: { userId: true } } }
+      include: { ...eventView, registrations: { where: { userId: request.userId, status: 'attending' }, select: { userId: true, status: true } } }
     });
     response.json(eventResponse(result, request.userId!));
   } catch (error) {
@@ -290,22 +323,77 @@ app.post('/events/:eventId/registrations', async (request, response) => {
 app.delete('/events/:eventId/registrations', async (request, response) => {
   try {
     await prisma.$transaction(async (transaction) => {
-      const deleted = await transaction.registration.deleteMany({
-        where: { eventId: routeParam(request, 'eventId'), userId: request.userId }
+      const eventId = routeParam(request, 'eventId');
+      const declined = await transaction.registration.updateMany({
+        where: { eventId, userId: request.userId, status: 'attending' },
+        data: { status: 'declined' }
       });
-      if (deleted.count) {
-        const event = await transaction.event.findUnique({ where: { id: routeParam(request, 'eventId') } });
+      if (declined.count) {
+        const event = await transaction.event.findUnique({ where: { id: eventId } });
         if (event && event.remainingSpots < event.capacity) {
           await transaction.event.update({
             where: { id: event.id },
             data: { remainingSpots: { increment: 1 } }
           });
         }
+        await transaction.invitation.updateMany({
+          where: { eventId, recipientId: request.userId },
+          data: { status: 'declined' }
+        });
       }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     response.status(204).end();
   } catch (error) {
     sendApiError(response, error, 'Could not cancel event registration');
+  }
+});
+
+app.get('/events/:eventId/attendance', async (request, response) => {
+  try {
+    const eventId = routeParam(request, 'eventId');
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        createdById: true,
+        capacity: true,
+        remainingSpots: true,
+        registrations: {
+          include: { user: { select: { id: true, name: true, email: true } } }
+        },
+        invitations: {
+          include: { recipient: { select: { id: true, name: true, email: true } } }
+        }
+      }
+    });
+    if (!event) {
+      throw new ApiError(404, 'Event not found');
+    }
+    if (event.createdById !== request.userId) {
+      throw new ApiError(403, 'Only the event creator can view the guest list');
+    }
+
+    const guests = new Map<string, { id: string; name: string; email: string; status: 'invited' | 'accepted' | 'declined' }>();
+    for (const invitation of event.invitations) {
+      guests.set(invitation.recipient.id, {
+        ...invitation.recipient,
+        status: invitation.status === 'accepted' || invitation.status === 'declined' ? invitation.status : 'invited'
+      });
+    }
+    for (const registration of event.registrations) {
+      guests.set(registration.user.id, {
+        ...registration.user,
+        status: registration.status === 'attending' ? 'accepted' : 'declined'
+      });
+    }
+    response.json({
+      capacity: event.capacity,
+      remainingSpots: event.remainingSpots,
+      attendingCount: event.registrations.filter((registration) => registration.status === 'attending').length,
+      guests: [...guests.values()].sort((first, second) => first.name.localeCompare(second.name))
+    });
+  } catch (error) {
+    sendApiError(response, error, 'Could not load event attendance');
   }
 });
 
@@ -395,7 +483,7 @@ app.post('/invitations/:invitationId/accept', async (request, response) => {
       const alreadyRegistered = await transaction.registration.findUnique({
         where: { eventId_userId: { eventId: invitation.eventId, userId: request.userId! } }
       });
-      if (!alreadyRegistered) {
+      if (alreadyRegistered?.status !== 'attending') {
         const event = await transaction.event.findUnique({ where: { id: invitation.eventId } });
         if (!event || event.date < today()) {
           throw new ApiError(409, 'Registration for this event is closed');
@@ -407,9 +495,16 @@ app.post('/invitations/:invitationId/accept', async (request, response) => {
         if (!updated.count) {
           throw new ApiError(409, 'This event is full');
         }
-        await transaction.registration.create({
-          data: { eventId: event.id, userId: request.userId! }
-        });
+        if (alreadyRegistered) {
+          await transaction.registration.update({
+            where: { id: alreadyRegistered.id },
+            data: { status: 'attending' }
+          });
+        } else {
+          await transaction.registration.create({
+            data: { eventId: event.id, userId: request.userId! }
+          });
+        }
       }
       await transaction.invitation.update({
         where: { id: invitation.id },

@@ -16,6 +16,18 @@ type EventItem = {
   viewerRegistered: boolean;
   creator: { id: string; name: string };
 };
+type EventGuest = {
+  id: string;
+  name: string;
+  email: string;
+  status: 'invited' | 'accepted' | 'declined';
+};
+type Attendance = {
+  capacity: number;
+  remainingSpots: number;
+  attendingCount: number;
+  guests: EventGuest[];
+};
 type Invitation = {
   id: string;
   createdAt: string;
@@ -89,7 +101,11 @@ function EventCard({
   onRegister,
   onEdit,
   onInvite,
-  busy
+  busy,
+  attendance,
+  attendanceLoading,
+  attendanceExpanded,
+  onToggleAttendance
 }: {
   event: EventItem;
   currentUser: User;
@@ -98,6 +114,10 @@ function EventCard({
   onEdit: (event: EventItem) => void;
   onInvite: (event: EventItem) => void;
   busy: boolean;
+  attendance?: Attendance;
+  attendanceLoading: boolean;
+  attendanceExpanded: boolean;
+  onToggleAttendance: (event: EventItem) => void;
 }) {
   const isOwner = event.creator.id === currentUser.id;
   const full = event.remainingSpots === 0 || event.capacity === 0;
@@ -147,11 +167,41 @@ function EventCard({
         )}
         {page === 'my-events' && isOwner && (
           <>
+            <button
+              className="button button-quiet"
+              type="button"
+              aria-expanded={attendanceExpanded}
+              onClick={() => onToggleAttendance(event)}
+            >
+              {attendanceLoading ? 'LOADING…' : attendanceExpanded ? 'HIDE GUESTS' : 'GUEST LIST'}
+            </button>
             <button className="button button-quiet" type="button" onClick={() => onEdit(event)}>EDIT EVENT</button>
             <button className="button button-light" type="button" onClick={() => onInvite(event)}>INVITE PEOPLE</button>
           </>
         )}
       </div>
+      {page === 'my-events' && isOwner && attendanceExpanded && (
+        <section className="attendance-panel" aria-label={`${event.title} attendance`}>
+          <div className="attendance-summary">
+            <span>{attendance?.attendingCount ?? event.registeredCount} ATTENDING</span>
+            <span>{attendance?.remainingSpots ?? event.remainingSpots} SPOTS LEFT</span>
+          </div>
+          {attendanceLoading ? (
+            <p className="attendance-empty">Loading guest list…</p>
+          ) : attendance?.guests.length ? (
+            <ul className="attendance-guests">
+              {attendance.guests.map((guest) => (
+                <li key={guest.id}>
+                  <span><strong>{guest.name}</strong><small>{guest.email}</small></span>
+                  <span className={`guest-status guest-status-${guest.status}`}>{guest.status}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="attendance-empty">No invitations or RSVPs yet.</p>
+          )}
+        </section>
+      )}
     </article>
   );
 }
@@ -163,6 +213,9 @@ export default function App() {
   const [page, setPage] = useState<Page>('discover');
   const [eventScope, setEventScope] = useState<'hosted' | 'attending'>('hosted');
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [attendanceByEvent, setAttendanceByEvent] = useState<Record<string, Attendance>>({});
+  const [attendanceLoadingEvent, setAttendanceLoadingEvent] = useState('');
+  const [expandedAttendanceEvent, setExpandedAttendanceEvent] = useState('');
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -271,6 +324,11 @@ export default function App() {
       if (!editing && payload.inviteEmails.length) {
         setNotice('Event created and invitations sent.');
       }
+      setAttendanceByEvent((current) => {
+        const updated = { ...current };
+        delete updated[result.id];
+        return updated;
+      });
       setEvents((current) => [result, ...current.filter((item) => item.id !== result.id)]);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not save the event.');
@@ -291,11 +349,37 @@ export default function App() {
         await api(`/api/events/${event.id}/registrations`, { method: 'POST', body: '{}' });
         setNotice(`Your spot for ${event.title} is reserved.`);
       }
+      setAttendanceByEvent((current) => {
+        const updated = { ...current };
+        delete updated[event.id];
+        return updated;
+      });
       await loadEvents();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not update your registration.');
     } finally {
       setBusyEvent('');
+    }
+  }
+
+  async function toggleAttendance(event: EventItem) {
+    if (expandedAttendanceEvent === event.id) {
+      setExpandedAttendanceEvent('');
+      return;
+    }
+    setExpandedAttendanceEvent(event.id);
+    if (attendanceByEvent[event.id]) return;
+
+    setAttendanceLoadingEvent(event.id);
+    setError('');
+    try {
+      const attendance = await api<Attendance>(`/api/events/${event.id}/attendance`);
+      setAttendanceByEvent((current) => ({ ...current, [event.id]: attendance }));
+    } catch (requestError) {
+      setExpandedAttendanceEvent('');
+      setError(requestError instanceof Error ? requestError.message : 'Could not load the guest list.');
+    } finally {
+      setAttendanceLoadingEvent('');
     }
   }
 
@@ -312,6 +396,12 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({ emails })
       });
+      setAttendanceByEvent((current) => {
+        const updated = { ...current };
+        delete updated[inviting.id];
+        return updated;
+      });
+      setExpandedAttendanceEvent((current) => current === inviting.id ? '' : current);
       setNotice(`${result.sent} invitation${result.sent === 1 ? '' : 's'} sent.`);
       setInviting(null);
     } catch (requestError) {
@@ -501,7 +591,20 @@ export default function App() {
             ) : (
               <div className="event-list">
                 {events.map((event) => (
-                  <EventCard key={event.id} event={event} currentUser={user} page={page} onRegister={(item) => void handleRegistration(item)} onEdit={(item) => { setEditing(item); setPage('create'); }} onInvite={setInviting} busy={busyEvent === event.id} />
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    currentUser={user}
+                    page={page}
+                    onRegister={(item) => void handleRegistration(item)}
+                    onEdit={(item) => { setEditing(item); setPage('create'); }}
+                    onInvite={setInviting}
+                    busy={busyEvent === event.id}
+                    attendance={attendanceByEvent[event.id]}
+                    attendanceLoading={attendanceLoadingEvent === event.id}
+                    attendanceExpanded={expandedAttendanceEvent === event.id}
+                    onToggleAttendance={(item) => void toggleAttendance(item)}
+                  />
                 ))}
               </div>
             )

@@ -159,6 +159,8 @@ volume and its data; only use it when you intend to reset the local database.
    or find and reserve an open event in **Discover**.
 4. Check **My events** to see events you host (including past events) or events
    you are attending. Remaining spots update when users reserve or cancel.
+   Open **Guest list** on a hosted event to see invited, accepted, and declined
+   guests along with the current attendance count and spots left.
 5. Use **Invite people** on an event you host to invite registered users later.
 
 Event prices are informational only; this demo does not collect payments.
