@@ -1,3 +1,5 @@
+const intentionalCiFailure: number = "This will cause a TypeScript compiler error";
+
 import express from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
