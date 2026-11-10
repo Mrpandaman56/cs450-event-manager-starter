@@ -1,5 +1,4 @@
-const intentionalCiFailure: number = "This will cause a TypeScript compiler error";
-
+PARSE_ERROR_SYNTAX_FAIL = ;
 import express from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
