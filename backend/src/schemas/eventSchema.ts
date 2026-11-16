@@ -39,3 +39,7 @@ export const eventUpdateSchema = z.object({
 export const invitationSchema = z.object({
   emails: z.array(z.string().trim().email().transform((email) => email.toLowerCase())).min(1).max(100)
 }).strict();
+
+export const registrationSchema = z.object({
+  status: z.enum(['attending', 'not_attending'])
+}).strict();

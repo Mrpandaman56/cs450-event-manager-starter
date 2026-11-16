@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { eventSchema, eventUpdateSchema, invitationSchema } from './eventSchema.js';
+import { eventSchema, eventUpdateSchema, invitationSchema, registrationSchema } from './eventSchema.js';
 import { loginSchema, registerSchema } from './authSchemas.js';
 
 test('event schema validates event data and converts dollar prices to cents', () => {
@@ -46,6 +46,13 @@ test('invitation addresses are normalized and limited to valid emails', () => {
     emails: ['user@example.test']
   });
   expect(invitationSchema.safeParse({ emails: ['not-an-email'] }).success).toBe(false);
+});
+
+test('registration responses only accept attending or not attending', () => {
+  expect(registrationSchema.parse({ status: 'attending' }).status).toBe('attending');
+  expect(registrationSchema.parse({ status: 'not_attending' }).status).toBe('not_attending');
+  expect(registrationSchema.safeParse({}).success).toBe(false);
+  expect(registrationSchema.safeParse({ status: 'maybe' }).success).toBe(false);
 });
 
 test('account schemas normalize email and require a strong-enough password', () => {
