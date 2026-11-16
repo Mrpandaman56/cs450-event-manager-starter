@@ -203,6 +203,37 @@ docker compose down
 - a deployable app setup
 - a polished final demo and product walkthrough
 
+### API authentication and route protection
+
+The client sends access tokens only in the `Authorization: Bearer <token>`
+header; authentication does not use cookies. Registration (`POST /api/auth/register`)
+and login (`POST /api/auth/login`) return a signed HS256 JWT with a one-hour
+expiry. The event service validates its signature, expiry, issuer, and audience
+using `JWT_SECRET`, then uses the verified `sub` claim as the authenticated user
+ID. The gateway forwards the authorization header and returns the service's
+status and response body.
+
+| Route | Access |
+|---|---|
+| `GET /api/health` | Public gateway health check |
+| `GET /health` on each service | Public service health check |
+| `POST /api/auth/register`, `POST /api/auth/login` | Public |
+| `GET /api/auth/me` | Valid bearer JWT required |
+| `/api/events` and `/api/invitations` | Valid bearer JWT required |
+
+Authentication does not grant event ownership: only the event creator can edit
+an event, inspect its attendance, or manage its invitations. Registration
+records are keyed to the JWT subject, and invitation lists and responses are
+restricted to the authenticated recipient. Missing, malformed, invalid, or
+expired bearer tokens receive `401`; an authenticated user who is not permitted
+to perform a resource action receives `403` (or `404` when the action is scoped
+to a resource they cannot access).
+
+Configure the same `JWT_SECRET` value, at least 32 characters long, for the user
+and event services. For local development, set it in both `.env` and
+`backend/.env`; Docker Compose passes the root `.env` value into both services.
+Changing the secret invalidates tokens signed with the previous value.
+
 ## Architecture and schema decisions
 
 The website is split into a React/TypeScript client, an Express API gateway, and two backend services. Vite serves the frontend and proxies its `/api` calls to the gateway. The gateway forwards `/api/auth` requests to the user service and `/api/events` and `/api/invitations` requests to the event service, forwarding bearer authorization headers and returning service responses. Both services use PostgreSQL through Prisma.
