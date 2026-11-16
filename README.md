@@ -60,7 +60,18 @@ cd cs450-event-manager-starter
 Run these commands from the project root:
 
 ```bash
+cp .env.example .env
 cp backend/.env.example backend/.env
+```
+
+Set `JWT_SECRET` in both `.env` files to the same randomly generated value of at
+least 32 characters before starting the services. For example, generate one
+with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
+Do not commit either `.env` file.
+
+Then install dependencies and start the database:
+
+```bash
 npm --prefix backend install
 npm --prefix frontend install
 docker compose up -d --wait
@@ -111,11 +122,14 @@ API URL or CORS configuration.
 ## Run with Docker
 
 1. `cp .env.example .env`
-2. `docker compose up --build`
-3. Access the UI: http://localhost:5174
-4. Verify the API gateway directly: `curl http://localhost:4001/api/health`
-5. Verify the frontend proxy: `curl http://localhost:5174/api/health`
-6. Shut down: `docker compose down`
+2. Set `JWT_SECRET` in `.env` to a randomly generated value of at least 32
+   characters (for example, generate one with
+   `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`).
+3. `docker compose up --build`
+4. Access the UI: http://localhost:5174
+5. Verify the API gateway directly: `curl http://localhost:4001/api/health`
+6. Verify the frontend proxy: `curl http://localhost:5174/api/health`
+7. Shut down: `docker compose down`
 
 Compose uses the Event Manager-specific `EVENT_MANAGER_DB_NAME` setting and
 defaults to `event_manager_app`, so unrelated `POSTGRES_DB` settings in a
@@ -164,7 +178,17 @@ volume and its data; only use it when you intend to reset the local database.
 5. Use **Invite people** on an event you host to invite registered users later.
 
 Event prices are informational only; this demo does not collect payments.
-Passwords are stored as salted hashes and login sessions use HTTP-only cookies.
+Passwords are stored as salted hashes. Registration and login return a signed
+JWT using HS256. Its contract includes `sub` (the account ID), `iss`
+(`event-manager-user-service`), `aud` (`event-manager-api`), `iat`, and `exp`;
+the lifetime is one hour, and no password, email, or profile data is included
+in the token. `JWT_SECRET` must be supplied through the environment and contain
+at least 32 characters; use the same randomly generated value for the user and
+event services. The browser keeps the token in session storage and sends it in
+the `Authorization: Bearer <token>` header for authenticated API requests;
+sign-out clears it from session storage, and cookies are not used for
+authentication. On application startup, the frontend checks the stored token
+with `/api/auth/me` before loading authenticated event data.
 Account creation is local and does not send email verification messages.
 
 To stop the database, run this from the project root:
@@ -181,9 +205,9 @@ docker compose down
 
 ## Architecture and schema decisions
 
-The website is split into a React/TypeScript client, an Express API gateway, and two backend services. Vite serves the frontend and proxies its `/api` calls to the gateway. The gateway forwards `/api/auth` requests to the user service and `/api/events` and `/api/invitations` requests to the event service, forwarding session cookies and returning service responses. Both services use PostgreSQL through Prisma.
+The website is split into a React/TypeScript client, an Express API gateway, and two backend services. Vite serves the frontend and proxies its `/api` calls to the gateway. The gateway forwards `/api/auth` requests to the user service and `/api/events` and `/api/invitations` requests to the event service, forwarding bearer authorization headers and returning service responses. Both services use PostgreSQL through Prisma.
 
-The user service handles accounts and sessions. It stores a unique email and a salted password hash. Login sessions use an HTTP-only cookie; the database stores a hash of the session token and its expiration time. The event service requires an authenticated user for event, registration, and invitation routes.
+The user service handles accounts and issues signed JWT access tokens after registration and sign-in. It stores a unique email and a salted password hash; the event service verifies bearer tokens using the same `JWT_SECRET` and requires an authenticated user for event, registration, and invitation routes.
 
 The Prisma schema separates `User`, `Event`, `Registration`, and `Invitation` because hosting, attending, and being invited are distinct relationships. A unique `[eventId, userId]` constraint prevents duplicate registrations, and a unique `[eventId, recipientId]` constraint prevents duplicate invitations to the same event. Account-based RSVP responses are stored on `Registration` as attending or declined; only attending registrations count toward capacity. Changing an RSVP to not attending releases the spot and appears in the host's guest list. The schema also contains a separate guest-name `RSVP` model; the current account-based RSVP routes use `Registration`.
 

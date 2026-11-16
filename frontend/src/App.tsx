@@ -36,6 +36,13 @@ type Invitation = {
 };
 type Page = 'discover' | 'my-events' | 'invitations' | 'create';
 type ApiError = { error?: string; details?: Record<string, string[] | undefined> };
+let accessToken: string | null = null;
+
+function setAccessToken(token: string | null) {
+  accessToken = token;
+  if (token) sessionStorage.setItem('accessToken', token);
+  else sessionStorage.removeItem('accessToken');
+}
 
 async function readResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -54,12 +61,14 @@ async function readResponse<T>(response: Response): Promise<T> {
 }
 
 async function api<T>(path: string, init?: RequestInit) {
+  const headers = new Headers(init?.headers);
+  if (init?.body) headers.set('Content-Type', 'application/json');
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+
   return readResponse<T>(await fetch(path, {
     ...init,
-    credentials: 'same-origin',
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {})
-    }
+    credentials: 'omit',
+    headers
   }));
 }
 
@@ -239,9 +248,19 @@ export default function App() {
   const [searchInput, setSearchInput] = useState('');
 
   useEffect(() => {
+    const storedToken = sessionStorage.getItem('accessToken');
+    accessToken = storedToken;
+    if (!storedToken) {
+      setAuthChecked(true);
+      return;
+    }
+
     void api<{ user: User }>('/api/auth/me')
       .then(({ user: currentUser }) => setUser(currentUser))
-      .catch(() => setUser(null))
+      .catch(() => {
+        setAccessToken(null);
+        setUser(null);
+      })
       .finally(() => setAuthChecked(true));
   }, []);
 
@@ -292,7 +311,8 @@ export default function App() {
       const payload = authMode === 'register'
         ? { name: String(values.get('name') || '').trim(), email: String(values.get('email') || '').trim(), password: String(values.get('password') || '') }
         : { email: String(values.get('email') || '').trim(), password: String(values.get('password') || '') };
-      const result = await api<{ user: User }>(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      const result = await api<{ user: User; token: string; expiresAt: string }>(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      setAccessToken(result.token);
       setUser(result.user);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not authenticate.');
@@ -303,15 +323,11 @@ export default function App() {
 
   async function handleSignOut() {
     setError('');
-    try {
-      await api<void>('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-      setPage('discover');
-      setEvents([]);
-      setInvitations([]);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not sign out.');
-    }
+    setAccessToken(null);
+    setUser(null);
+    setPage('discover');
+    setEvents([]);
+    setInvitations([]);
   }
 
   async function handleEventSubmit(event: FormEvent<HTMLFormElement>) {
@@ -469,7 +485,7 @@ export default function App() {
               {authMode === 'login' ? 'Create an account' : 'Sign in'}
             </button>
           </p>
-          <p className="auth-privacy">Your password is encrypted before it is stored. Your account keeps your events and registrations together.</p>
+          <p className="auth-privacy">Your password is securely hashed before it is stored. Your account keeps your events and registrations together.</p>
         </section>
         <span className="auth-orbit orbit-a" /><span className="auth-orbit orbit-b" />
       </main>

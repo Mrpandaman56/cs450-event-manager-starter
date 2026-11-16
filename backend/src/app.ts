@@ -8,7 +8,6 @@ const userServiceUrl = process.env.USER_SERVICE_URL || 'http://localhost:4003';
 
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5174',
-  credentials: true
 }));
 app.use(express.json());
 
@@ -17,8 +16,8 @@ function proxyTo(serviceUrl: string): express.RequestHandler {
     try {
       const url = new URL(request.originalUrl.replace(/^\/api/, ''), serviceUrl);
       const headers: Record<string, string> = {};
-      if (request.headers.cookie) {
-        headers.Cookie = request.headers.cookie;
+      if (request.headers.authorization) {
+        headers.Authorization = request.headers.authorization;
       }
       if (request.is('application/json')) {
         headers['Content-Type'] = 'application/json';
@@ -30,11 +29,6 @@ function proxyTo(serviceUrl: string): express.RequestHandler {
         headers,
         body: hasBody ? JSON.stringify(request.body ?? {}) : undefined
       });
-
-      const setCookies = upstream.headers.getSetCookie();
-      if (setCookies.length) {
-        response.setHeader('Set-Cookie', setCookies);
-      }
 
       if (upstream.status === 204) {
         response.status(204).end();
