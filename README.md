@@ -156,7 +156,7 @@ volume and its data; only use it when you intend to reset the local database.
 2. Create an event with a name, date, location, capacity, and optional price,
    directions link, description, and invitations to existing accounts.
 3. Sign out and sign in as an invited account. Accept or decline the invitation,
-   or find and reserve an open event in **Discover**.
+   or choose **Attending** or **Not attending** for an open event in **Discover**.
 4. Check **My events** to see events you host (including past events) or events
    you are attending. Remaining spots update when users reserve or cancel.
    Open **Guest list** on a hosted event to see invited, accepted, and declined
@@ -185,12 +185,12 @@ The website is split into a React/TypeScript client, an Express API gateway, and
 
 The user service handles accounts and sessions. It stores a unique email and a salted password hash. Login sessions use an HTTP-only cookie; the database stores a hash of the session token and its expiration time. The event service requires an authenticated user for event, registration, and invitation routes.
 
-The Prisma schema separates `User`, `Event`, `Registration`, and `Invitation` because hosting, attending, and being invited are distinct relationships. A unique `[eventId, userId]` constraint prevents duplicate registrations, and a unique `[eventId, recipientId]` constraint prevents duplicate invitations to the same event. The schema also contains a separate guest-name `RSVP` model; the current account-based reservation routes use `Registration`.
+The Prisma schema separates `User`, `Event`, `Registration`, and `Invitation` because hosting, attending, and being invited are distinct relationships. A unique `[eventId, userId]` constraint prevents duplicate registrations, and a unique `[eventId, recipientId]` constraint prevents duplicate invitations to the same event. Account-based RSVP responses are stored on `Registration` as attending or declined; only attending registrations count toward capacity. Changing an RSVP to not attending releases the spot and appears in the host's guest list. The schema also contains a separate guest-name `RSVP` model; the current account-based RSVP routes use `Registration`.
 
-Each event stores its total `capacity` and its `remainingSpots`. Transactions update availability when users register or cancel, while a unique user/event registration prevents duplicate reservations. Request validation uses Zod: event dates must be valid `YYYY-MM-DD` dates, capacity must be a positive integer, and prices entered in dollars are converted to a integer. PostgreSQL runs through Docker Compose, and Prisma applies the schema with `db:push`.
+Each event stores its total `capacity` and its `remainingSpots`. Transactions update availability when users register or cancel, while a unique user/event registration prevents duplicate reservations. Request validation uses Zod: event dates must be valid `YYYY-MM-DD` dates, capacity must be a non-negative integer, and RSVP responses must be attending or not attending. Prices entered in dollars are converted to an integer. PostgreSQL runs through Docker Compose, and Prisma applies the schema with `db:push`.
 
 
-- **Invite-Only Events:** Restricts spot reservations to event creators and users with accepted invitations.
+- **Invite-Only Events:** Hides events from non-invitees and restricts RSVP responses to invitees and event creators.
 - **Capacity Rules & Warning Banners:** Supports zero-capacity events (`capacity = 0`), serializable reservation locking, and dynamic `≥ 90% CAPACITY (ALMOST FULL)` warning badges.
 - **50-Event Demo Seeding:** Populates the database with test events across realistic dates, capacities, and invitation states.
 

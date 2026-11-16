@@ -13,14 +13,14 @@ type EventItem = {
   priceCents: number;
   description: string | null;
   inviteOnly: boolean;
-  viewerRegistered: boolean;
+  viewerRsvpStatus: 'attending' | 'not_attending' | null;
   creator: { id: string; name: string };
 };
 type EventGuest = {
   id: string;
   name: string;
   email: string;
-  status: 'invited' | 'accepted' | 'declined';
+  status: 'invited' | 'attending' | 'declined';
 };
 type Attendance = {
   capacity: number;
@@ -98,7 +98,7 @@ function EventCard({
   event,
   currentUser,
   page,
-  onRegister,
+  onRsvp,
   onEdit,
   onInvite,
   busy,
@@ -110,7 +110,7 @@ function EventCard({
   event: EventItem;
   currentUser: User;
   page: Page;
-  onRegister: (event: EventItem) => void;
+  onRsvp: (event: EventItem, status: 'attending' | 'not_attending') => void;
   onEdit: (event: EventItem) => void;
   onInvite: (event: EventItem) => void;
   busy: boolean;
@@ -155,15 +155,26 @@ function EventCard({
       </div>
       <div className="event-actions">
         {page === 'discover' && (
-          <button
-            className={event.viewerRegistered ? 'button button-quiet' : 'button button-light'}
-            type="button"
-            disabled={busy || (full && !event.viewerRegistered)}
-            onClick={() => onRegister(event)}
-            style={full && !event.viewerRegistered && !busy ? { cursor: 'not-allowed' } : undefined}
-          >
-            {busy ? 'PLEASE WAIT' : event.viewerRegistered ? 'CANCEL' : full ? 'FULL' : 'RESERVE SPOT'}
-          </button>
+          <>
+            <button
+              className={event.viewerRsvpStatus === 'attending' ? 'button button-quiet' : 'button button-light'}
+              type="button"
+              aria-pressed={event.viewerRsvpStatus === 'attending'}
+              disabled={busy || event.viewerRsvpStatus === 'attending'}
+              onClick={() => onRsvp(event, 'attending')}
+            >
+              {busy ? 'PLEASE WAIT' : event.viewerRsvpStatus === 'attending' ? 'ATTENDING' : full ? 'ATTEND · FULL' : 'ATTEND'}
+            </button>
+            <button
+              className={event.viewerRsvpStatus === 'not_attending' ? 'button button-quiet' : 'button button-light'}
+              type="button"
+              aria-pressed={event.viewerRsvpStatus === 'not_attending'}
+              disabled={busy || event.viewerRsvpStatus === 'not_attending'}
+              onClick={() => onRsvp(event, 'not_attending')}
+            >
+              {busy ? 'PLEASE WAIT' : 'NOT ATTENDING'}
+            </button>
+          </>
         )}
         {page === 'my-events' && isOwner && (
           <>
@@ -337,18 +348,18 @@ export default function App() {
     }
   }
 
-  async function handleRegistration(event: EventItem) {
+  async function handleRsvp(event: EventItem, status: 'attending' | 'not_attending') {
     setBusyEvent(event.id);
     setError('');
     setNotice('');
     try {
-      if (event.viewerRegistered) {
-        await api<void>(`/api/events/${event.id}/registrations`, { method: 'DELETE' });
-        setNotice(`Registration cancelled for ${event.title}.`);
-      } else {
-        await api(`/api/events/${event.id}/registrations`, { method: 'POST', body: '{}' });
-        setNotice(`Your spot for ${event.title} is reserved.`);
-      }
+      await api(`/api/events/${event.id}/registrations`, {
+        method: 'POST',
+        body: JSON.stringify({ status })
+      });
+      setNotice(status === 'attending'
+        ? `Your spot for ${event.title} is reserved.`
+        : `You’re marked as not attending ${event.title}.`);
       setAttendanceByEvent((current) => {
         const updated = { ...current };
         delete updated[event.id];
@@ -368,8 +379,6 @@ export default function App() {
       return;
     }
     setExpandedAttendanceEvent(event.id);
-    if (attendanceByEvent[event.id]) return;
-
     setAttendanceLoadingEvent(event.id);
     setError('');
     try {
@@ -596,7 +605,7 @@ export default function App() {
                     event={event}
                     currentUser={user}
                     page={page}
-                    onRegister={(item) => void handleRegistration(item)}
+                    onRsvp={(item, status) => void handleRsvp(item, status)}
                     onEdit={(item) => { setEditing(item); setPage('create'); }}
                     onInvite={setInviting}
                     busy={busyEvent === event.id}

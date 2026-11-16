@@ -1,7 +1,7 @@
 import express from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
-import { eventSchema, eventUpdateSchema, invitationSchema } from '../schemas/eventSchema.js';
+import { eventSchema, eventUpdateSchema, invitationSchema, registrationSchema } from '../schemas/eventSchema.js';
 import { validateBody } from '../middleware/validateBody.js';
 
 const app = express();
@@ -63,7 +63,11 @@ function eventResponse(
     priceCents,
     registeredCount: _count.registrations,
     remainingSpots: Number(fields.remainingSpots),
-    viewerRegistered: registrations.some((registration) => registration.userId === userId && registration.status === 'attending'),
+    viewerRsvpStatus: registrations.find((registration) => registration.userId === userId)?.status === 'attending'
+      ? 'attending'
+      : registrations.some((registration) => registration.userId === userId)
+        ? 'not_attending'
+        : null,
     creator: creator || { id: '', name: 'Community host' }
   };
 }
@@ -74,48 +78,58 @@ const eventView = {
   registrations: { select: { userId: true, status: true } }
 } as const;
 
-async function registerForEvent(eventId: string, userId: string) {
+async function respondToEvent(eventId: string, userId: string, status: 'attending' | 'not_attending') {
   return prisma.$transaction(async (transaction) => {
     const event = await transaction.event.findUnique({ where: { id: eventId } });
     if (!event) {
       throw new ApiError(404, 'Event not found');
     }
-    if (event.date < today()) {
+    if (status === 'attending' && event.date < today()) {
       throw new ApiError(409, 'Registration for this event is closed');
-    }
-    if (event.inviteOnly && event.createdById !== userId) {
-      const invitation = await transaction.invitation.findFirst({
-        where: { eventId, recipientId: userId }
-      });
-      if (!invitation) {
-        throw new ApiError(403, 'This event is by invitation only');
-      }
     }
     const registration = await transaction.registration.findUnique({
       where: { eventId_userId: { eventId, userId } }
     });
-    if (registration?.status === 'attending') {
-      throw new ApiError(409, 'You are already registered for this event');
+    const invitation = event.inviteOnly && event.createdById !== userId
+      ? await transaction.invitation.findFirst({ where: { eventId, recipientId: userId } })
+      : null;
+    if (event.inviteOnly && event.createdById !== userId && !invitation && !registration) {
+      throw new ApiError(403, 'This event is by invitation only');
     }
 
-    const updated = await transaction.event.updateMany({
-      where: { id: eventId, remainingSpots: { gt: 0 } },
-      data: { remainingSpots: { decrement: 1 } }
-    });
-    if (updated.count === 0) {
-      throw new ApiError(409, 'This event is full');
+    if (status === 'attending' && registration?.status !== 'attending') {
+      const updated = await transaction.event.updateMany({
+        where: { id: eventId, remainingSpots: { gt: 0 } },
+        data: { remainingSpots: { decrement: 1 } }
+      });
+      if (updated.count === 0) {
+        throw new ApiError(409, 'This event is full');
+      }
+    } else if (status === 'not_attending' && registration?.status === 'attending') {
+      await transaction.event.updateMany({
+        where: { id: eventId, remainingSpots: { lt: event.capacity } },
+        data: { remainingSpots: { increment: 1 } }
+      });
     }
 
+    const registrationStatus = status === 'attending' ? 'attending' : 'declined';
     const savedRegistration = registration
       ? await transaction.registration.update({
         where: { id: registration.id },
-        data: { status: 'attending' }
+        data: { status: registrationStatus }
       })
-      : await transaction.registration.create({ data: { eventId, userId } });
-    await transaction.invitation.updateMany({
-      where: { eventId, recipientId: userId, status: { in: ['pending', 'declined'] } },
-      data: { status: 'accepted' }
-    });
+      : await transaction.registration.create({ data: { eventId, userId, status: registrationStatus } });
+    if (status === 'attending') {
+      await transaction.invitation.updateMany({
+        where: { eventId, recipientId: userId, status: { in: ['pending', 'declined'] } },
+        data: { status: 'accepted' }
+      });
+    } else {
+      await transaction.invitation.updateMany({
+        where: { eventId, recipientId: userId },
+        data: { status: 'declined' }
+      });
+    }
     return savedRegistration;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
@@ -196,7 +210,7 @@ app.get('/events', async (request, response) => {
       include: {
         ...eventView,
         registrations: {
-          where: { userId: request.userId, status: 'attending' },
+          where: { userId: request.userId },
           select: { userId: true, status: true }
         }
       }
@@ -310,10 +324,11 @@ app.patch('/events/:eventId', async (request, response) => {
   }
 });
 
-app.post('/events/:eventId/registrations', async (request, response) => {
+app.post('/events/:eventId/registrations', validateBody(registrationSchema), async (request, response) => {
+  const { status } = registrationSchema.parse(request.body);
   try {
     await restoreLegacyEventAvailability();
-    const registration = await registerForEvent(routeParam(request, 'eventId'), request.userId!);
+    const registration = await respondToEvent(routeParam(request, 'eventId'), request.userId!, status);
     response.status(201).json(registration);
   } catch (error) {
     sendApiError(response, error, 'Could not register for event');
@@ -373,17 +388,17 @@ app.get('/events/:eventId/attendance', async (request, response) => {
       throw new ApiError(403, 'Only the event creator can view the guest list');
     }
 
-    const guests = new Map<string, { id: string; name: string; email: string; status: 'invited' | 'accepted' | 'declined' }>();
+    const guests = new Map<string, { id: string; name: string; email: string; status: 'invited' | 'attending' | 'declined' }>();
     for (const invitation of event.invitations) {
       guests.set(invitation.recipient.id, {
         ...invitation.recipient,
-        status: invitation.status === 'accepted' || invitation.status === 'declined' ? invitation.status : 'invited'
+        status: invitation.status === 'accepted' ? 'attending' : invitation.status === 'declined' ? 'declined' : 'invited'
       });
     }
     for (const registration of event.registrations) {
       guests.set(registration.user.id, {
         ...registration.user,
-        status: registration.status === 'attending' ? 'accepted' : 'declined'
+        status: registration.status === 'attending' ? 'attending' : 'declined'
       });
     }
     response.json({
