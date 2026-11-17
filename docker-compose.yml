@@ -58,6 +58,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${EVENT_MANAGER_DB_NAME:-event_manager_app}?schema=public
       EVENT_SERVICE_PORT: "4002"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     ports:
       - "4002:4002"
     depends_on:
@@ -72,6 +73,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${EVENT_MANAGER_DB_NAME:-event_manager_app}?schema=public
       USER_SERVICE_PORT: "4003"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
     ports:
       - "4003:4003"
     depends_on:
