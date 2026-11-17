@@ -13,6 +13,7 @@
     "start:user": "node dist/userService/index.js",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
     "test": "vitest run",
     "test:watch": "vitest"
   },
