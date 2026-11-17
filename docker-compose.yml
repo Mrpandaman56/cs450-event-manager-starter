@@ -66,6 +66,12 @@ services:
         condition: service_healthy
       schema:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4002/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   user:
     build: ./backend
@@ -81,6 +87,12 @@ services:
         condition: service_healthy
       schema:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4003/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   gateway:
     build: ./backend
@@ -99,9 +111,15 @@ services:
       schema:
         condition: service_completed_successfully
       event:
-        condition: service_started
+        condition: service_healthy
       user:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   web:
     build: ./frontend
@@ -111,7 +129,13 @@ services:
       - "5174:5174"
     depends_on:
       gateway:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5174/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres_data:

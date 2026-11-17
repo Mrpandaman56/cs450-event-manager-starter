@@ -41,6 +41,7 @@ model Event {
   @@index([createdById, date])
 }
 
+/// Legacy guest-name records; active RSVP routes use account-backed Registration.
 model RSVP {
   id        String   @id @default(cuid())
   eventId   String
