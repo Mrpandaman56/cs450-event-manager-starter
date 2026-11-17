@@ -247,12 +247,30 @@ Each event stores its total `capacity` and its `remainingSpots`. Transactions up
 
 - **Invite-Only Events:** Hides events from non-invitees and restricts RSVP responses to invitees and event creators.
 - **Capacity Rules & Warning Banners:** Supports zero-capacity events (`capacity = 0`), serializable reservation locking, and dynamic `≥ 90% CAPACITY (ALMOST FULL)` warning badges.
-- **50-Event Demo Seeding:** Populates the database with test events across realistic dates, capacities, and invitation states.
+- **Demo Database Seeding:** Creates two usable demo accounts, six upcoming events, and a pending invitation from the host to the guest. Re-running the seed refreshes only the `[Demo]` events and their invitations/registrations.
 
-# Generate Prisma types and apply migrations
+### Seed the demo database
+
+Start the database and apply the schema, then run the seed from the project root:
+
+```bash
+docker compose up -d db
 npm --prefix backend run prisma:generate
 npm --prefix backend run db:push
+npm --prefix backend run db:seed
+```
 
-# Run the 50-event seed script:
-cd backend
-npx tsx prisma/seed.ts
+The seed is repeatable: it updates the demo accounts and replaces events whose
+titles start with `[Demo] `. It leaves other users and events untouched.
+
+Sign in at http://localhost:5174 with either demo account:
+
+| Role | Email | Password |
+|---|---|---|
+| Host | `demohost@example.com` | `DemoHost123!` |
+| Guest | `demoguest@example.com` | `DemoGuest123!` |
+
+The guest starts with a pending invitation to **[Demo] Invite-only Product
+Workshop**. Sign in as the guest to accept or decline it, then sign back in as
+the host to inspect the event's guest list. These fixed credentials are for
+local demos only; do not use them in a deployed environment.

@@ -1,74 +1,161 @@
 import { PrismaClient } from '@prisma/client';
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
 
 const prisma = new PrismaClient();
+const scrypt = promisify(scryptCallback);
+const demoEventPrefix = '[Demo] ';
 
-const sampleTitles = [
-  'Tech Meetup & Networking', 'Community Garden Cleanup', 'Design Thinking Workshop',
-  'Startup Pitch Night', 'Local Farmers Market', 'Indie Music Showcase',
-  'Outdoor Yoga Session', 'Cybersecurity Panel', 'AI & ML Discussion',
-  'Board Game Night'
+const demoAccounts = {
+  host: {
+    name: 'Demo Host',
+    email: 'demohost@example.com',
+    password: 'DemoHost123!'
+  },
+  guest: {
+    name: 'Demo Guest',
+    email: 'demoguest@example.com',
+    password: 'DemoGuest123!'
+  }
+};
+
+const demoEvents = [
+  {
+    title: 'Community Tech Meetup',
+    daysFromNow: 3,
+    location: 'Downtown Co-working Space',
+    capacity: 30,
+    priceCents: 0,
+    inviteOnly: false,
+    description: 'Meet local developers and share what you are building.'
+  },
+  {
+    title: 'Invite-only Product Workshop',
+    daysFromNow: 7,
+    location: 'Innovation Hub Studio B',
+    capacity: 12,
+    priceCents: 1500,
+    inviteOnly: true,
+    description: 'A hands-on workshop. A pending invitation is ready for the demo guest.'
+  },
+  {
+    title: 'Community Garden Cleanup',
+    daysFromNow: 10,
+    location: 'Central Park Pavilion',
+    capacity: 20,
+    priceCents: 0,
+    inviteOnly: false,
+    description: 'Help prepare the community garden for the season.'
+  },
+  {
+    title: 'Design Thinking Workshop',
+    daysFromNow: 14,
+    location: 'City Library Conference Room',
+    capacity: 16,
+    priceCents: 1000,
+    inviteOnly: false,
+    description: 'Practice turning user needs into useful product ideas.'
+  },
+  {
+    title: 'Indie Music Showcase',
+    daysFromNow: 21,
+    location: 'Rooftop Lounge',
+    capacity: 50,
+    priceCents: 2000,
+    inviteOnly: false,
+    description: 'An evening of live music from local artists.'
+  },
+  {
+    title: 'Board Game Night',
+    daysFromNow: 28,
+    location: 'Community Center Room 101',
+    capacity: 18,
+    priceCents: 0,
+    inviteOnly: false,
+    description: 'Bring a favorite game or join a table when you arrive.'
+  }
 ];
 
-const sampleLocations = [
-  'Main Auditorium, Building A', 'Central Park Pavilion', 'Downtown Co-working Space',
-  'Community Center Room 101', 'City Library Conference Room', 'Rooftop Lounge',
-  'Innovation Hub Studio B'
-];
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString('hex');
+  const derivedKey = await scrypt(password, salt, 64) as Buffer;
+  return `${salt}:${derivedKey.toString('hex')}`;
+}
+
+function eventDate(daysFromNow: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromNow);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
 
 async function seed() {
-  console.log('Seeding database with demo user and 50 events...');
+  const [hostPasswordHash, guestPasswordHash] = await Promise.all([
+    hashPassword(demoAccounts.host.password),
+    hashPassword(demoAccounts.guest.password)
+  ]);
 
-  // Ensure a primary demo host account exists
-  let host = await prisma.user.findFirst();
-  if (!host) {
-    host = await prisma.user.create({
-      data: {
-        name: 'Demo Host',
-        email: 'demohost@example.com',
-        passwordHash: '$2b$10$abcdefghijklmnopqrstuv' // placeholder hash
+  await prisma.$transaction(async (transaction) => {
+    const host = await transaction.user.upsert({
+      where: { email: demoAccounts.host.email },
+      update: { name: demoAccounts.host.name, passwordHash: hostPasswordHash },
+      create: {
+        name: demoAccounts.host.name,
+        email: demoAccounts.host.email,
+        passwordHash: hostPasswordHash
       }
     });
-  }
-
-  const eventsData = [];
-  const baseDate = new Date();
-
-  for (let i = 1; i <= 50; i++) {
-    const titleIndex = (i - 1) % sampleTitles.length;
-    const locationIndex = (i - 1) % sampleLocations.length;
-
-    // Distribute event dates across the next 60 days
-    const eventDate = new Date(baseDate);
-    eventDate.setDate(baseDate.getDate() + (i % 60));
-
-    const capacity = (i % 5 === 0) ? 0 : 10 + (i * 2); // Mix in capacity = 0 events
-    const inviteOnly = i % 4 === 0; // Every 4th event is invite-only
-
-    eventsData.push({
-      title: `${sampleTitles[titleIndex]} #${i}`,
-      date: eventDate,
-      location: sampleLocations[locationIndex],
-      capacity: capacity,
-      remainingSpots: capacity,
-      priceCents: (i % 3 === 0) ? 1500 : 0,
-      description: `Description for demo event #${i}. Join us for an engaging community gathering.`,
-      inviteOnly: inviteOnly,
-      createdById: host.id
+    const guest = await transaction.user.upsert({
+      where: { email: demoAccounts.guest.email },
+      update: { name: demoAccounts.guest.name, passwordHash: guestPasswordHash },
+      create: {
+        name: demoAccounts.guest.name,
+        email: demoAccounts.guest.email,
+        passwordHash: guestPasswordHash
+      }
     });
-  }
 
-  // Clear previous test events if needed and insert batch
-  await prisma.event.createMany({
-    data: eventsData
+    await transaction.event.deleteMany({
+      where: { title: { startsWith: demoEventPrefix } }
+    });
+
+    const createdEvents = [];
+    for (const [index, event] of demoEvents.entries()) {
+      createdEvents.push(await transaction.event.create({
+        data: {
+          title: `${demoEventPrefix}${event.title}`,
+          date: eventDate(event.daysFromNow),
+          location: event.location,
+          capacity: event.capacity,
+          remainingSpots: event.capacity,
+          priceCents: event.priceCents,
+          description: event.description,
+          inviteOnly: event.inviteOnly,
+          createdById: host.id
+        }
+      }));
+
+      if (index === 1) {
+        await transaction.invitation.create({
+          data: {
+            eventId: createdEvents[index].id,
+            senderId: host.id,
+            recipientId: guest.id
+          }
+        });
+      }
+    }
   });
 
-  console.log('Successfully seeded 50 events into PostgreSQL database.');
+  console.log('Seeded 2 demo accounts, 6 upcoming events, and 1 pending invitation.');
+  console.log(`Host:  ${demoAccounts.host.email} / ${demoAccounts.host.password}`);
+  console.log(`Guest: ${demoAccounts.guest.email} / ${demoAccounts.guest.password}`);
 }
 
 seed()
-  .catch((e) => {
-    console.error('Seeding error:', e);
-    process.exit(1);
+  .catch((error) => {
+    console.error('Seeding error:', error);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
