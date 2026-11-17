@@ -247,7 +247,7 @@ Each event stores its total `capacity` and its `remainingSpots`. Transactions up
 
 - **Invite-Only Events:** Hides events from non-invitees and restricts RSVP responses to invitees and event creators.
 - **Capacity Rules & Warning Banners:** Supports zero-capacity events (`capacity = 0`), serializable reservation locking, and dynamic `≥ 90% CAPACITY (ALMOST FULL)` warning badges.
-- **Demo Database Seeding:** Creates two usable demo accounts, six upcoming events, and a pending invitation from the host to the guest. Re-running the seed refreshes only the `[Demo]` events and their invitations/registrations.
+- **Demo Database Seeding:** Creates two usable demo accounts, six upcoming events, an event with one open spot, a full event, and a pending invitation. Re-running the seed refreshes only the `[Demo]` events and their invitations/registrations.
 
 ### Seed the demo database
 
@@ -274,3 +274,9 @@ The guest starts with a pending invitation to **[Demo] Invite-only Product
 Workshop**. Sign in as the guest to accept or decline it, then sign back in as
 the host to inspect the event's guest list. These fixed credentials are for
 local demos only; do not use them in a deployed environment.
+
+For capacity demos, **[Demo] Community Tech Meetup** has capacity 2 with the
+host already attending, leaving exactly one spot for the guest to take.
+**[Demo] Fully Booked Design Thinking Workshop** has capacity 2 and both demo
+accounts already attending. The remaining events have multiple open spots;
+the invite-only workshop is also open to its invited guest.
