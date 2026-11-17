@@ -24,9 +24,10 @@ const demoEvents = [
     title: 'Community Tech Meetup',
     daysFromNow: 3,
     location: 'Downtown Co-working Space',
-    capacity: 30,
+    capacity: 2,
     priceCents: 0,
     inviteOnly: false,
+    registeredUsers: ['host'],
     description: 'Meet local developers and share what you are building.'
   },
   {
@@ -36,6 +37,7 @@ const demoEvents = [
     capacity: 12,
     priceCents: 1500,
     inviteOnly: true,
+    registeredUsers: [],
     description: 'A hands-on workshop. A pending invitation is ready for the demo guest.'
   },
   {
@@ -45,15 +47,17 @@ const demoEvents = [
     capacity: 20,
     priceCents: 0,
     inviteOnly: false,
+    registeredUsers: [],
     description: 'Help prepare the community garden for the season.'
   },
   {
-    title: 'Design Thinking Workshop',
+    title: 'Fully Booked Design Thinking Workshop',
     daysFromNow: 14,
     location: 'City Library Conference Room',
-    capacity: 16,
+    capacity: 2,
     priceCents: 1000,
     inviteOnly: false,
+    registeredUsers: ['host', 'guest'],
     description: 'Practice turning user needs into useful product ideas.'
   },
   {
@@ -63,6 +67,7 @@ const demoEvents = [
     capacity: 50,
     priceCents: 2000,
     inviteOnly: false,
+    registeredUsers: [],
     description: 'An evening of live music from local artists.'
   },
   {
@@ -72,6 +77,7 @@ const demoEvents = [
     capacity: 18,
     priceCents: 0,
     inviteOnly: false,
+    registeredUsers: [],
     description: 'Bring a favorite game or join a table when you arrive.'
   }
 ];
@@ -127,13 +133,22 @@ async function seed() {
           date: eventDate(event.daysFromNow),
           location: event.location,
           capacity: event.capacity,
-          remainingSpots: event.capacity,
+          remainingSpots: event.capacity - event.registeredUsers.length,
           priceCents: event.priceCents,
           description: event.description,
           inviteOnly: event.inviteOnly,
           createdById: host.id
         }
       }));
+
+      if (event.registeredUsers.length > 0) {
+        await transaction.registration.createMany({
+          data: event.registeredUsers.map((userRole) => ({
+            eventId: createdEvents[index].id,
+            userId: userRole === 'host' ? host.id : guest.id
+          }))
+        });
+      }
 
       if (index === 1) {
         await transaction.invitation.create({
