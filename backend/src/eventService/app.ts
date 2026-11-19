@@ -464,9 +464,12 @@ app.get('/events/:eventId/attendance', async (request, response) => {
 
     const guests = new Map<string, { id: string; name: string; email: string; status: 'invited' | 'attending' | 'declined' }>();
     for (const invitation of event.invitations) {
+      if (invitation.status === 'accepted') {
+        continue;
+      }
       guests.set(invitation.recipient.id, {
         ...invitation.recipient,
-        status: invitation.status === 'accepted' ? 'attending' : invitation.status === 'declined' ? 'declined' : 'invited'
+        status: invitation.status === 'declined' ? 'declined' : 'invited'
       });
     }
     for (const registration of event.registrations) {
@@ -475,20 +478,23 @@ app.get('/events/:eventId/attendance', async (request, response) => {
         status: registration.status === 'attending' ? 'attending' : 'declined'
       });
     }
-    response.json({
-      capacity: event.capacity,
-      remainingSpots: event.remainingSpots,
-      attendingCount: event.cancelledAt
-  ? 0
-  : event.registrations.filter(
-      (registration) => registration.status === 'attending'
-    ).length,
+    const guestList = [...guests.values()].sort((first, second) => first.name.localeCompare(second.name));
+    const statusCounts = guestList.reduce((counts, guest) => {
+      counts[guest.status] += 1;
+      return counts;
+    }, { invited: 0, attending: 0, declined: 0 });
 
-historicalAttendingCount: event.registrations.filter(
-  (registration) => registration.status === 'attending'
-).length,
-      guests: [...guests.values()].sort((first, second) => first.name.localeCompare(second.name))
-    });
+response.json({
+  capacity: event.capacity,
+  remainingSpots: event.cancelledAt ? 0 : event.remainingSpots,
+  attendingCount: event.cancelledAt ? 0 : statusCounts.attending,
+  historicalAttendingCount: statusCounts.attending,
+  statusCounts: event.cancelledAt
+    ? { ...statusCounts, attending: 0 }
+    : statusCounts,
+  guests: guestList
+});
+
   } catch (error) {
     sendApiError(response, error, 'Could not load event attendance');
   }

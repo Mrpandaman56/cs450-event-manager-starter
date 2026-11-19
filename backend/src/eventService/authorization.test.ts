@@ -110,7 +110,7 @@ describe('event resource authorization', () => {
       createdById: 'creator-1',
       capacity: 10,
       remainingSpots: 9,
-      registrations: [],
+      registrations: [{ status: 'attending', user: { id: 'guest-1', name: 'Guest', email: 'guest@example.test' } }],
       invitations: []
     };
     mocks.event.findUnique.mockResolvedValue(eventWithAttendance);
@@ -123,8 +123,63 @@ describe('event resource authorization', () => {
       .set('Authorization', authHeader('other-user'));
 
     expect(creatorResponse.status).toBe(200);
+    expect(creatorResponse.body).toMatchObject({
+      attendingCount: 1,
+      statusCounts: { invited: 0, attending: 1, declined: 0 },
+      guests: [{ id: 'guest-1', name: 'Guest', status: 'attending' }]
+    });
     expect(otherUserResponse.status).toBe(403);
     expect(otherUserResponse.body).toEqual({ error: 'Only the event creator can view the guest list' });
+  });
+
+  test('attendance includes grouped invitation and registration statuses', async () => {
+    mocks.event.findUnique.mockResolvedValue({
+      id: 'event-1',
+      createdById: 'creator-1',
+      capacity: 10,
+      remainingSpots: 9,
+      registrations: [
+        { status: 'attending', user: { id: 'accepted-guest', name: 'Accepted Guest', email: 'accepted@example.test' } },
+        { status: 'declined', user: { id: 'declined-guest', name: 'Declined Guest', email: 'declined@example.test' } }
+      ],
+      invitations: [
+        { status: 'pending', recipient: { id: 'invited-guest', name: 'Invited Guest', email: 'invited@example.test' } },
+        { status: 'accepted', recipient: { id: 'accepted-guest', name: 'Accepted Guest', email: 'accepted@example.test' } },
+        { status: 'declined', recipient: { id: 'declined-guest', name: 'Declined Guest', email: 'declined@example.test' } },
+        { status: 'accepted', recipient: { id: 'orphaned-guest', name: 'Orphaned Guest', email: 'orphaned@example.test' } }
+      ]
+    });
+
+    const response = await request(app)
+      .get('/events/event-1/attendance')
+      .set('Authorization', authHeader('creator-1'));
+
+    expect(response.status).toBe(200);
+    expect(response.body.attendingCount).toBe(1);
+    expect(response.body.statusCounts).toEqual({ invited: 1, attending: 1, declined: 1 });
+    expect(response.body.guests).toHaveLength(3);
+  });
+
+  test('empty attendance returns explicit zero counts and an empty guest list', async () => {
+    mocks.event.findUnique.mockResolvedValue({
+      id: 'event-1',
+      createdById: 'creator-1',
+      capacity: 10,
+      remainingSpots: 10,
+      registrations: [],
+      invitations: []
+    });
+
+    const response = await request(app)
+      .get('/events/event-1/attendance')
+      .set('Authorization', authHeader('creator-1'));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      attendingCount: 0,
+      statusCounts: { invited: 0, attending: 0, declined: 0 },
+      guests: []
+    });
   });
 
   test('only the creator can edit an event', async () => {

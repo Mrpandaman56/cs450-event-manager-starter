@@ -27,6 +27,7 @@ type Attendance = {
   capacity: number;
   remainingSpots: number;
   attendingCount: number;
+  statusCounts: { invited: number; attending: number; declined: number };
   guests: EventGuest[];
 };
 type Invitation = {
@@ -240,7 +241,9 @@ function EventCard({
       {page === 'my-events' && isOwner && attendanceExpanded && (
         <section className="attendance-panel" aria-label={`${event.title} attendance`}>
           <div className="attendance-summary">
-            <span>{attendance?.attendingCount ?? event.registeredCount} ATTENDING</span>
+            <span>{attendance?.statusCounts.invited ?? 0} INVITED</span>
+            <span>{attendance?.statusCounts.attending ?? event.registeredCount} ATTENDING</span>
+            <span>{attendance?.statusCounts.declined ?? 0} DECLINED</span>
             <span>{attendance?.remainingSpots ?? event.remainingSpots} SPOTS LEFT</span>
           </div>
           {attendanceLoading ? (
@@ -255,7 +258,7 @@ function EventCard({
               ))}
             </ul>
           ) : (
-            <p className="attendance-empty">No invitations or RSVPs yet.</p>
+            <p className="attendance-empty">No guests or RSVPs yet.</p>
           )}
         </section>
       )}
