@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 type User = { id: string; name: string; email: string };
 type EventItem = {
+  cancelledAt: string | null;
   id: string;
   title: string;
   date: string;
@@ -110,6 +111,7 @@ function EventCard({
   page,
   onRsvp,
   onEdit,
+  onCancel,
   onInvite,
   busy,
   attendance,
@@ -123,6 +125,7 @@ function EventCard({
   onRsvp: (event: EventItem, status: 'attending' | 'not_attending') => void;
   onEdit: (event: EventItem) => void;
   onInvite: (event: EventItem) => void;
+  onCancel: (event: EventItem) => void;
   busy: boolean;
   attendance?: Attendance;
   attendanceLoading: boolean;
@@ -146,9 +149,15 @@ function EventCard({
           <span>{formatDate(event.date, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
           {event.inviteOnly && <span className="availability">INVITE ONLY</span>}
           {isAlmostFull && <span className="availability availability-warning">≥ 90% CAPACITY (ALMOST FULL)</span>}
-          <span className={`availability ${full ? 'availability-full' : ''}`}>
-            {full ? 'SOLD OUT' : `${event.remainingSpots} SPOTS LEFT`}
-          </span>
+          {event.cancelledAt ? (
+  <span className="availability availability-full">
+    CANCELLED
+  </span>
+) : (
+  <span className={`availability ${full ? 'availability-full' : ''}`}>
+    {full ? 'SOLD OUT' : `${event.remainingSpots} SPOTS LEFT`}
+  </span>
+)}
         </div>
         <h3>{event.title}</h3>
         <p className="event-place">{event.location} <span>·</span> hosted by {event.creator.name}</p>
@@ -185,8 +194,8 @@ function EventCard({
               {busy ? 'PLEASE WAIT' : 'NOT ATTENDING'}
             </button>
           </>
-        )}
-        {page === 'my-events' && isOwner && (
+           )}
+         {page === 'my-events' && isOwner && (
           <>
             <button
               className="button button-quiet"
@@ -196,8 +205,36 @@ function EventCard({
             >
               {attendanceLoading ? 'LOADING…' : attendanceExpanded ? 'HIDE GUESTS' : 'GUEST LIST'}
             </button>
-            <button className="button button-quiet" type="button" onClick={() => onEdit(event)}>EDIT EVENT</button>
-            <button className="button button-light" type="button" onClick={() => onInvite(event)}>INVITE PEOPLE</button>
+{!event.cancelledAt && (
+  <>
+    <button
+      className="button button-quiet"
+      type="button"
+      onClick={() => onEdit(event)}
+    >
+      EDIT EVENT
+    </button>
+
+    <button
+      className="button button-light"
+      type="button"
+      onClick={() => onInvite(event)}
+    >
+      INVITE PEOPLE
+    </button>
+
+    {event.date >= new Date().toISOString().slice(0, 10) && (
+      <button
+        className="button button-light"
+        type="button"
+        disabled={busy}
+        onClick={() => onCancel(event)}
+      >
+        {busy ? 'CANCELLING…' : 'CANCEL EVENT'}
+      </button>
+      )}
+  </>
+)}
           </>
         )}
       </div>
@@ -366,6 +403,44 @@ export default function App() {
       setSubmitting(false);
     }
   }
+
+async function handleCancelEvent(event: EventItem) {
+  const confirmed = window.confirm(
+    `Are you sure you want to cancel "${event.title}"?\n\n` +
+    'The event will be removed from upcoming events. ' +
+    'Existing RSVP records will be kept for history.'
+  );
+
+  if (!confirmed) return;
+
+  setBusyEvent(event.id);
+  setError('');
+  setNotice('');
+
+  try {
+    await api<{ message: string }>(
+      `/api/events/${event.id}/cancel`,
+      { method: 'POST' }
+    );
+
+    setAttendanceByEvent((current) => {
+      const updated = { ...current };
+      delete updated[event.id];
+      return updated;
+    });
+
+    await loadEvents();
+    setNotice(`"${event.title}" was cancelled successfully.`);
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : 'Could not cancel the event.'
+    );
+  } finally {
+    setBusyEvent('');
+  }
+}
 
   async function handleRsvp(event: EventItem, status: 'attending' | 'not_attending') {
     setBusyEvent(event.id);
@@ -626,6 +701,7 @@ export default function App() {
                     page={page}
                     onRsvp={(item, status) => void handleRsvp(item, status)}
                     onEdit={(item) => { setEditing(item); setPage('create'); }}
+                    onCancel={(item) => void handleCancelEvent(item)}
                     onInvite={setInviting}
                     busy={busyEvent === event.id}
                     attendance={attendanceByEvent[event.id]}

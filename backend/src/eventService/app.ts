@@ -61,8 +61,9 @@ function eventResponse(
     inviteOnly: Boolean(fields.inviteOnly),
     date: date.toISOString().slice(0, 10),
     priceCents,
-    registeredCount: _count.registrations,
-    remainingSpots: Number(fields.remainingSpots),
+    registeredCount: fields.cancelledAt ? 0 : _count.registrations,
+  historicalRegisteredCount: _count.registrations,
+  remainingSpots: fields.cancelledAt ? 0 : Number(fields.remainingSpots),
     viewerRsvpStatus: registrations.find((registration) => registration.userId === userId)?.status === 'attending'
       ? 'attending'
       : registrations.some((registration) => registration.userId === userId)
@@ -84,6 +85,9 @@ async function respondToEvent(eventId: string, userId: string, status: 'attendin
     if (!event) {
       throw new ApiError(404, 'Event not found');
     }
+    if (event.cancelledAt) {
+     throw new ApiError(409, 'This event has been cancelled');
+    }
     if (status === 'attending' && event.date < today()) {
       throw new ApiError(409, 'Registration for this event is closed');
     }
@@ -99,7 +103,7 @@ async function respondToEvent(eventId: string, userId: string, status: 'attendin
 
     if (status === 'attending' && registration?.status !== 'attending') {
       const updated = await transaction.event.updateMany({
-        where: { id: eventId, remainingSpots: { gt: 0 } },
+        where: { id: eventId, cancelledAt: null, remainingSpots: { gt: 0 } },
         data: { remainingSpots: { decrement: 1 } }
       });
       if (updated.count === 0) {
@@ -136,7 +140,7 @@ async function respondToEvent(eventId: string, userId: string, status: 'attendin
 
 async function restoreLegacyEventAvailability() {
   const legacyEvents = await prisma.event.findMany({
-    where: { remainingSpots: 0 },
+    where: { remainingSpots: 0, cancelledAt: null },
     select: {
       id: true,
       capacity: true,
@@ -148,7 +152,8 @@ async function restoreLegacyEventAvailability() {
     const remainingSpots = Math.max(0, event.capacity - event._count.registrations);
     if (remainingSpots > 0) {
       await prisma.event.updateMany({
-        where: { id: event.id, remainingSpots: 0 },
+        where: { id: event.id, remainingSpots: 0,
+    cancelledAt: null },
         data: { remainingSpots }
       });
     }
@@ -174,10 +179,18 @@ app.get('/events', async (request, response) => {
     const scope = request.query.scope;
     const search = typeof request.query.q === 'string' ? request.query.q.trim() : '';
     const where: Prisma.EventWhereInput = scope === 'mine'
-      ? { createdById: request.userId }
-      : scope === 'registered'
-        ? { registrations: { some: { userId: request.userId, status: 'attending' } } }
-        : { date: { gte: today() } };
+  ? { createdById: request.userId }
+  : scope === 'registered'
+    ? {
+        cancelledAt: null,
+        registrations: {
+          some: { userId: request.userId, status: 'attending' }
+        }
+      }
+    : {
+        date: { gte: today() },
+        cancelledAt: null
+      };
     const conditions: Prisma.EventWhereInput[] = [];
 
     if (scope !== 'mine') {
@@ -291,7 +304,9 @@ app.patch('/events/:eventId', async (request, response) => {
       if (existing.createdById !== request.userId) {
         throw new ApiError(403, 'Only the event creator can edit this event');
       }
-
+      if (existing.cancelledAt) {
+  throw new ApiError(409, 'Cannot edit a cancelled event');
+}
       const registrationCount = await transaction.registration.count({ where: { eventId: existing.id, status: 'attending' } });
       if (input.capacity !== undefined && input.capacity < registrationCount) {
         throw new ApiError(409, 'Capacity cannot be lower than the number of people already registered');
@@ -324,6 +339,56 @@ app.patch('/events/:eventId', async (request, response) => {
   }
 });
 
+app.post('/events/:eventId/cancel', async (request, response) => {
+  try {
+    const eventId = routeParam(request, 'eventId');
+
+    const event = await prisma.event.findUnique({
+      where: { id: eventId }
+    });
+
+    if (!event) {
+      throw new ApiError(404, 'Event not found');
+    }
+
+    if (event.createdById !== request.userId) {
+      throw new ApiError(403, 'Only the organizer can cancel this event');
+    }
+
+    if (event.cancelledAt) {
+      throw new ApiError(409, 'This event is already cancelled');
+    }
+
+    if (event.date < today()) {
+      throw new ApiError(409, 'Past events cannot be cancelled');
+    }
+
+    const updated = await prisma.event.updateMany({
+      where: {
+        id: eventId,
+        createdById: request.userId,
+        cancelledAt: null,
+        date: { gte: today() }
+      },
+      data: {
+        cancelledAt: new Date(),
+        remainingSpots: 0
+      }
+    });
+
+    if (updated.count === 0) {
+      throw new ApiError(409, 'Event could not be cancelled');
+    }
+
+    response.json({
+      message: 'Event cancelled successfully'
+    });
+  } catch (error) {
+    sendApiError(response, error, 'Could not cancel event');
+  }
+});
+
+
 app.post('/events/:eventId/registrations', validateBody(registrationSchema), async (request, response) => {
   const { status } = registrationSchema.parse(request.body);
   try {
@@ -339,6 +404,14 @@ app.delete('/events/:eventId/registrations', async (request, response) => {
   try {
     await prisma.$transaction(async (transaction) => {
       const eventId = routeParam(request, 'eventId');
+      const cancelledEvent = await transaction.event.findUnique({
+  where: { id: eventId },
+  select: { cancelledAt: true }
+});
+
+if (cancelledEvent?.cancelledAt) {
+  throw new ApiError(409, 'Cannot change an RSVP for a cancelled event');
+}
       const declined = await transaction.registration.updateMany({
         where: { eventId, userId: request.userId, status: 'attending' },
         data: { status: 'declined' }
@@ -371,6 +444,7 @@ app.get('/events/:eventId/attendance', async (request, response) => {
       select: {
         id: true,
         createdById: true,
+        cancelledAt: true,
         capacity: true,
         remainingSpots: true,
         registrations: {
@@ -410,13 +484,17 @@ app.get('/events/:eventId/attendance', async (request, response) => {
       return counts;
     }, { invited: 0, attending: 0, declined: 0 });
 
-    response.json({
-      capacity: event.capacity,
-      remainingSpots: event.remainingSpots,
-      attendingCount: statusCounts.attending,
-      statusCounts,
-      guests: guestList
-    });
+response.json({
+  capacity: event.capacity,
+  remainingSpots: event.cancelledAt ? 0 : event.remainingSpots,
+  attendingCount: event.cancelledAt ? 0 : statusCounts.attending,
+  historicalAttendingCount: statusCounts.attending,
+  statusCounts: event.cancelledAt
+    ? { ...statusCounts, attending: 0 }
+    : statusCounts,
+  guests: guestList
+});
+
   } catch (error) {
     sendApiError(response, error, 'Could not load event attendance');
   }
@@ -428,6 +506,9 @@ app.post('/events/:eventId/invitations', validateBody(invitationSchema), async (
     const event = await prisma.event.findUnique({ where: { id: routeParam(request, 'eventId') } });
     if (!event) {
       throw new ApiError(404, 'Event not found');
+    }
+    if (event.cancelledAt) {
+  throw new ApiError(409, 'Cannot invite guests to a cancelled event');
     }
     if (event.createdById !== request.userId) {
       throw new ApiError(403, 'Only the event creator can invite guests');
@@ -457,28 +538,35 @@ app.post('/events/:eventId/invitations', validateBody(invitationSchema), async (
 
 app.get('/invitations', async (request, response) => {
   try {
-    const invitations = await prisma.invitation.findMany({
-      where: { recipientId: request.userId, status: 'pending' },
-      include: {
-        sender: { select: { name: true } },
-        event: {
-          select: {
-            id: true,
-            title: true,
-            date: true,
-            location: true,
-            guidanceUrl: true,
-            capacity: true,
-            remainingSpots: true,
-            priceCents: true,
-            description: true,
-            inviteOnly: true,
-            createdById: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+const invitations = await prisma.invitation.findMany({
+  where:{
+    recipientId: request.userId,
+    status: 'pending',
+    event: {
+      cancelledAt: null
+    }
+  },
+  include: {
+    sender: { select: { name: true } },
+    event: {
+      select: {
+        id: true,
+        title: true,
+        date: true,
+        location: true,
+        guidanceUrl: true,
+        capacity: true,
+        remainingSpots: true,
+        priceCents: true,
+        description: true,
+        inviteOnly: true,
+        createdById: true
+      }
+    }
+  },
+  orderBy: { createdAt: 'desc' }
+});
+
     response.json(invitations.map((invitation) => ({
       ...invitation,
       event: {
@@ -505,6 +593,16 @@ app.post('/invitations/:invitationId/accept', async (request, response) => {
     }
 
     await prisma.$transaction(async (transaction) => {
+      const currentEvent = await transaction.event.findUnique({
+  where: { id: invitation.eventId }
+});
+
+if (!currentEvent || currentEvent.cancelledAt) {
+  throw new ApiError(
+    409,
+    'This event has been cancelled or no longer exists'
+  );
+}
       const alreadyRegistered = await transaction.registration.findUnique({
         where: { eventId_userId: { eventId: invitation.eventId, userId: request.userId! } }
       });
@@ -514,7 +612,7 @@ app.post('/invitations/:invitationId/accept', async (request, response) => {
           throw new ApiError(409, 'Registration for this event is closed');
         }
         const updated = await transaction.event.updateMany({
-          where: { id: event.id, remainingSpots: { gt: 0 } },
+          where: { id: event.id, cancelledAt: null, remainingSpots: { gt: 0 } },
           data: { remainingSpots: { decrement: 1 } }
         });
         if (!updated.count) {

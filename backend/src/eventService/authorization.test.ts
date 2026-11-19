@@ -262,4 +262,68 @@ describe('event resource authorization', () => {
       data: { status: 'declined' }
     });
   });
+
+test('event creator can cancel an upcoming event', async () => {
+  const response = await request(app)
+    .post('/events/event-1/cancel')
+    .set('Authorization', authHeader('creator-1'));
+
+  expect(response.status).toBe(200);
+  expect(response.body.message).toBe('Event cancelled successfully');
+  expect(mocks.event.updateMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'event-1',
+        createdById: 'creator-1',
+        cancelledAt: null
+      }),
+      data: expect.objectContaining({
+        cancelledAt: expect.any(Date),
+        remainingSpots: 0
+      })
+    })
+  );
+});
+
+test('other users cannot cancel an event', async () => {
+  const response = await request(app)
+    .post('/events/event-1/cancel')
+    .set('Authorization', authHeader('other-user'));
+
+  expect(response.status).toBe(403);
+  expect(mocks.event.updateMany).not.toHaveBeenCalled();
+});
+
+test('an event cannot be cancelled twice', async () => {
+  mocks.event.findUnique.mockResolvedValueOnce({
+    id: 'event-1',
+    createdById: 'creator-1',
+    date: new Date('2099-01-01'),
+    cancelledAt: new Date()
+  });
+
+  const response = await request(app)
+    .post('/events/event-1/cancel')
+    .set('Authorization', authHeader('creator-1'));
+
+  expect(response.status).toBe(409);
+});
+
+test('attendees cannot RSVP to cancelled events', async () => {
+  mocks.event.findUnique.mockResolvedValueOnce({
+    id: 'event-1',
+    createdById: 'creator-1',
+    date: new Date('2099-01-01'),
+    cancelledAt: new Date()
+  });
+
+  const response = await request(app)
+    .post('/events/event-1/registrations')
+    .set('Authorization', authHeader('guest-1'))
+    .send({ status: 'attending' });
+
+  expect(response.status).toBe(409);
+  expect(mocks.registration.create).not.toHaveBeenCalled();
+});
+
 });
